@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PSX Classroom Chair — Three.js</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #1a1c22;
+      color: #e8e4dc;
+      overflow: hidden;
+    }
+    #hud {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      max-width: 320px;
+      padding: 14px 16px;
+      background: rgba(12, 14, 18, 0.82);
+      border: 1px solid #3a4048;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    #hud h1 {
+      font-size: 15px;
+      margin-bottom: 6px;
+      color: #9ec8ff;
+    }
+    button {
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: #1a7a8a;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover { background: #2299ad; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <h1>PSX Classroom Chair</h1>
+    <p>Low-poly chair for Cuenca Ave classrooms. Student faces +X. Matches <code>classroom_chair_builder.gd</code>.</p>
+    <button id="export">Export classroom_chair.glb</button>
+  </div>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
+
+    const COLORS = {
+      frame: 0x1c1c1e,
+      metal: 0x2a2a2c,
+      arm: 0xc4b090,
+    };
+
+    function addBox(group, center, size, color) {
+      const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
+      const mat = new THREE.MeshLambertMaterial({ color });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.copy(center);
+      group.add(mesh);
+      return mesh;
+    }
+
+    function addAngledPanel(group, bottom, top, widthZ, thicknessX, color) {
+      const hz = widthZ * 0.5;
+      const hx = thicknessX * 0.5;
+      const h = top.y - bottom.y;
+      const geo = new THREE.BoxGeometry(thicknessX, h, widthZ);
+      const mat = new THREE.MeshLambertMaterial({ color });
+      const mesh = new THREE.Mesh(geo, mat);
+      const mid = bottom.clone().lerp(top, 0.5);
+      mesh.position.copy(mid);
+      const tilt = Math.atan2(top.x - bottom.x, h);
+      mesh.rotation.z = tilt;
+      group.add(mesh);
+    }
+
+    function buildChair() {
+      const root = new THREE.Group();
+      root.name = "ClassroomChair";
+
+      const frame = new THREE.Group();
+      frame.name = "ChairFrame";
+      addBox(frame, new THREE.Vector3(0, 0.415, 0), new THREE.Vector3(0.46, 0.055, 0.44), COLORS.frame);
+      addAngledPanel(frame, new THREE.Vector3(-0.19, 0.50, 0), new THREE.Vector3(-0.23, 0.80, 0), 0.44, 0.05, COLORS.frame);
+      addBox(frame, new THREE.Vector3(-0.08, 0.30, -0.22), new THREE.Vector3(0.035, 0.22, 0.035), COLORS.frame);
+      addBox(frame, new THREE.Vector3(-0.10, 0.56, -0.30), new THREE.Vector3(0.30, 0.028, 0.20), COLORS.frame);
+      addBox(frame, new THREE.Vector3(-0.24, 0.64, -0.30), new THREE.Vector3(0.025, 0.14, 0.20), COLORS.frame);
+      root.add(frame);
+
+      const metal = new THREE.Group();
+      metal.name = "ChairMetal";
+      for (const leg of [
+        [-0.17, 0.21, -0.18],
+        [-0.17, 0.21, 0.18],
+        [0.15, 0.21, -0.18],
+        [0.15, 0.21, 0.18],
+      ]) {
+        addBox(metal, new THREE.Vector3(...leg), new THREE.Vector3(0.038, 0.42, 0.038), COLORS.metal);
+      }
+      addBox(metal, new THREE.Vector3(-0.01, 0.24, -0.18), new THREE.Vector3(0.34, 0.028, 0.028), COLORS.metal);
+      addBox(metal, new THREE.Vector3(-0.01, 0.24, 0.18), new THREE.Vector3(0.34, 0.028, 0.028), COLORS.metal);
+      addBox(metal, new THREE.Vector3(-0.19, 0.36, 0.0), new THREE.Vector3(0.028, 0.30, 0.36), COLORS.metal);
+      root.add(metal);
+
+      const arm = new THREE.Group();
+      arm.name = "ChairArm";
+      addBox(arm, new THREE.Vector3(-0.10, 0.568, -0.30), new THREE.Vector3(0.26, 0.018, 0.17), COLORS.arm);
+      root.add(arm);
+
+      return root;
+    }
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x2a3038);
+
+    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+    camera.position.set(1.4, 1.1, 1.6);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setPixelRatio(1);
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0.45, 0);
+    controls.update();
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const key = new THREE.DirectionalLight(0xfff4e8, 0.9);
+    key.position.set(2, 4, 3);
+    scene.add(key);
+
+    const chair = buildChair();
+    scene.add(chair);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(4, 4),
+      new THREE.MeshLambertMaterial({ color: 0x7a7c78 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    const grid = new THREE.GridHelper(4, 16, 0x4a5058, 0x3a4048);
+    scene.add(grid);
+
+    document.getElementById("export").addEventListener("click", () => {
+      const exporter = new GLTFExporter();
+      exporter.parse(
+        chair,
+        (gltf) => {
+          const blob = new Blob([gltf], { type: "model/gltf-binary" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "classroom_chair.glb";
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+        (err) => console.error(err),
+        { binary: true }
+      );
+    });
+
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>

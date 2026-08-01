@@ -1,0 +1,154 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scripts/cblock_map.gd" id="1_map"]
+[ext_resource type="Script" path="res://scripts/cblock_environment.gd" id="2_environment"]
+[ext_resource type="Script" path="res://scripts/cblock_player.gd" id="3_player"]
+[ext_resource type="PackedScene" path="res://assets/npcs/cblock_edward_npc.tscn" id="4_edward"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_day"]
+sky_top_color = Color(0.18, 0.43, 0.66, 1)
+sky_horizon_color = Color(0.74, 0.86, 0.93, 1)
+sky_curve = 0.12
+sky_energy_multiplier = 0.72
+ground_bottom_color = Color(0.16, 0.2, 0.2, 1)
+ground_horizon_color = Color(0.62, 0.7, 0.7, 1)
+ground_curve = 0.08
+sun_angle_max = 18.0
+sun_curve = 0.08
+
+[sub_resource type="Sky" id="Sky_day"]
+sky_material = SubResource("ProceduralSkyMaterial_day")
+process_mode = 2
+radiance_size = 3
+
+[sub_resource type="Environment" id="Environment_city"]
+background_mode = 2
+sky = SubResource("Sky_day")
+ambient_light_source = 3
+ambient_light_color = Color(0.78, 0.85, 0.9, 1)
+ambient_light_energy = 0.42
+reflected_light_source = 2
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.69, 0.79, 0.84, 1)
+fog_light_energy = 0.22
+fog_density = 0.0008
+fog_sky_affect = 0.35
+
+[sub_resource type="CapsuleShape3D" id="Capsule_player"]
+radius = 0.38
+height = 1.8
+
+[node name="CBlockMap" type="Node3D"]
+script = ExtResource("1_map")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_city")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-48, -32, 0)
+light_color = Color(1, 0.94, 0.84, 1)
+light_energy = 0.78
+shadow_enabled = true
+directional_shadow_max_distance = 110.0
+directional_shadow_fade_start = 0.78
+
+[node name="CBlockDistrict" type="Node3D" parent="."]
+script = ExtResource("2_environment")
+
+[node name="EdwardPedestrian" parent="." instance=ExtResource("4_edward")]
+position = Vector3(-12, 0.94, -26.5)
+
+[node name="Player" type="CharacterBody3D" parent="."]
+position = Vector3(0, 0.94, 0)
+collision_layer = 2
+collision_mask = 1
+script = ExtResource("3_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
+shape = SubResource("Capsule_player")
+
+[node name="ModelRoot" type="Node3D" parent="Player"]
+rotation = Vector3(0, 3.14159265, 0)
+
+[node name="CameraRig" type="Node3D" parent="."]
+position = Vector3(0, 1.56, 0)
+
+[node name="SpringArm3D" type="SpringArm3D" parent="CameraRig"]
+rotation = Vector3(-0.22, 0, 0)
+spring_length = 5.2
+margin = 0.22
+collision_mask = 1
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig/SpringArm3D"]
+current = true
+fov = 68.0
+near = 0.08
+far = 220.0
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="TopBar" type="ColorRect" parent="HUD"]
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 710.0
+offset_bottom = 94.0
+color = Color(0.025, 0.04, 0.055, 0.88)
+
+[node name="Title" type="Label" parent="HUD/TopBar"]
+offset_left = 16.0
+offset_top = 8.0
+offset_right = 670.0
+offset_bottom = 40.0
+theme_override_colors/font_color = Color(0.9, 0.96, 1, 1)
+theme_override_colors/font_outline_color = Color(0.01, 0.02, 0.03, 1)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 22
+text = "CBLOCK  //  CENTRAL DISTRICT"
+
+[node name="Help" type="Label" parent="HUD/TopBar"]
+offset_left = 16.0
+offset_top = 40.0
+offset_right = 670.0
+offset_bottom = 66.0
+theme_override_colors/font_color = Color(0.7, 0.8, 0.87, 1)
+theme_override_font_sizes/font_size = 14
+text = "WASD move  |  Mouse orbit  |  Shift sprint  |  Space jump  |  LMB punch  |  RMB hit  |  C character  |  M menu  |  R reset"
+
+[node name="Prompt" type="Label" parent="HUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -400.0
+offset_top = -160.0
+offset_right = 400.0
+offset_bottom = -110.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(1, 0.92, 0.65, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.02, 0.02, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 24
+horizontal_alignment = 1
+
+[node name="Message" type="Label" parent="HUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -520.0
+offset_top = -96.0
+offset_right = 520.0
+offset_bottom = -34.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.94, 0.96, 0.94, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.02, 0.02, 1)
+theme_override_constants/outline_size = 7
+theme_override_font_sizes/font_size = 25
+text = "GUSION READY  //  CBlock Central Plaza"
+horizontal_alignment = 1

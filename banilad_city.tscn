@@ -1,0 +1,148 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scripts/banilad_city.gd" id="1_map"]
+[ext_resource type="PackedScene" path="res://assets/maps/banilad_map.glb" id="2_level"]
+[ext_resource type="NavigationMesh" path="res://assets/maps/banilad_navmesh.res" id="3_navmesh"]
+[ext_resource type="Script" path="res://scripts/cblock_player.gd" id="4_player"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_banilad"]
+sky_top_color = Color(0.21, 0.45, 0.68, 1)
+sky_horizon_color = Color(0.78, 0.86, 0.9, 1)
+sky_curve = 0.14
+sky_energy_multiplier = 0.78
+ground_bottom_color = Color(0.18, 0.19, 0.18, 1)
+ground_horizon_color = Color(0.64, 0.68, 0.68, 1)
+ground_curve = 0.08
+sun_angle_max = 20.0
+sun_curve = 0.1
+
+[sub_resource type="Sky" id="Sky_banilad"]
+sky_material = SubResource("ProceduralSkyMaterial_banilad")
+process_mode = 2
+radiance_size = 3
+
+[sub_resource type="Environment" id="Environment_banilad"]
+background_mode = 2
+sky = SubResource("Sky_banilad")
+ambient_light_source = 2
+ambient_light_color = Color(0.6, 0.64, 0.7, 1)
+ambient_light_energy = 0.36
+reflected_light_source = 1
+tonemap_mode = 2
+fog_enabled = false
+
+[sub_resource type="CapsuleShape3D" id="Capsule_player"]
+radius = 0.38
+height = 1.8
+
+[node name="BaniladCity" type="Node3D"]
+script = ExtResource("1_map")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_banilad")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-52, -38, 0)
+light_color = Color(1, 0.95, 0.87, 1)
+light_energy = 0.75
+shadow_enabled = true
+directional_shadow_max_distance = 140.0
+directional_shadow_fade_start = 0.8
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+navigation_mesh = ExtResource("3_navmesh")
+
+[node name="Level" parent="NavigationRegion3D" instance=ExtResource("2_level")]
+
+[node name="Player" type="CharacterBody3D" parent="."]
+position = Vector3(12.79, 1.2, -554.24)
+collision_layer = 2
+collision_mask = 1
+script = ExtResource("4_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
+shape = SubResource("Capsule_player")
+
+[node name="ModelRoot" type="Node3D" parent="Player"]
+rotation = Vector3(0, 3.14159265, 0)
+
+[node name="CameraRig" type="Node3D" parent="."]
+position = Vector3(12.79, 1.82, -554.24)
+
+[node name="SpringArm3D" type="SpringArm3D" parent="CameraRig"]
+rotation = Vector3(-0.24, 0, 0)
+spring_length = 5.4
+margin = 0.24
+collision_mask = 1
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig/SpringArm3D"]
+current = true
+fov = 70.0
+near = 0.08
+far = 900.0
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="TopBar" type="ColorRect" parent="HUD"]
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 730.0
+offset_bottom = 94.0
+color = Color(0.025, 0.04, 0.055, 0.88)
+
+[node name="Title" type="Label" parent="HUD/TopBar"]
+offset_left = 16.0
+offset_top = 8.0
+offset_right = 690.0
+offset_bottom = 40.0
+theme_override_colors/font_color = Color(0.9, 0.96, 1, 1)
+theme_override_colors/font_outline_color = Color(0.01, 0.02, 0.03, 1)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 22
+text = "BANILAD  //  GOV. M. CUENCO AVENUE"
+
+[node name="Help" type="Label" parent="HUD/TopBar"]
+offset_left = 16.0
+offset_top = 40.0
+offset_right = 690.0
+offset_bottom = 66.0
+theme_override_colors/font_color = Color(0.7, 0.8, 0.87, 1)
+theme_override_font_sizes/font_size = 14
+text = "WASD move  |  Mouse orbit  |  Shift sprint  |  Space jump  |  M menu  |  R reset to avenue"
+
+[node name="Prompt" type="Label" parent="HUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -400.0
+offset_top = -160.0
+offset_right = 400.0
+offset_bottom = -110.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(1, 0.92, 0.65, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.02, 0.02, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 24
+horizontal_alignment = 1
+
+[node name="Message" type="Label" parent="HUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -520.0
+offset_top = -96.0
+offset_right = 520.0
+offset_bottom = -34.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.94, 0.96, 0.94, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.02, 0.02, 1)
+theme_override_constants/outline_size = 7
+theme_override_font_sizes/font_size = 25
+horizontal_alignment = 1

@@ -1,0 +1,1780 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Create, animate, and export intact low-poly NPCs for the UCB Inday PSX school-horror game.">
+  <meta name="theme-color" content="#080b0f">
+  <title>UCB Inday — NPC Works</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="npc_studio.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">UC</span>
+        <span class="brand-copy">
+          <strong>NPC WORKS</strong>
+          <small>UCB INDAY / ASSET TERMINAL</small>
+        </span>
+      </div>
+      <div class="top-status" aria-label="Project status">
+        <span><i class="status-led"></i> THREE.JS LIVE</span>
+        <span class="top-divider">/</span>
+        <span id="clockReadout">23:17:04</span>
+      </div>
+      <button class="button button-export" id="exportButton" type="button">
+        <span>EXPORT GLB</span>
+        <kbd>G</kbd>
+      </button>
+    </header>
+
+    <main class="workspace">
+      <aside class="panel panel-left" aria-label="Character customization">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">PERSONNEL FILE</span>
+            <h1>Build an NPC</h1>
+          </div>
+          <span class="file-number" id="fileNumber">#042</span>
+        </div>
+
+        <nav class="tabs" aria-label="Customizer sections">
+          <button class="tab is-active" type="button" data-tab="identity">Identity</button>
+          <button class="tab" type="button" data-tab="uniform">Uniform</button>
+          <button class="tab" type="button" data-tab="gear">Gear</button>
+        </nav>
+
+        <div class="tab-page is-active" data-page="identity">
+          <label class="field">
+            <span>NPC name</span>
+            <input id="npcName" type="text" maxlength="32" value="Hallway Student 042" autocomplete="off">
+          </label>
+
+          <div class="field">
+            <span>Body frame</span>
+            <div class="segmented" id="bodyFrame" role="group" aria-label="Body frame">
+              <button type="button" data-value="compact">Compact</button>
+              <button class="is-active" type="button" data-value="average">Average</button>
+              <button type="button" data-value="tall">Tall</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>Uniform cut</span>
+            <div class="segmented" id="uniformCut" role="group" aria-label="Uniform cut">
+              <button class="is-active" type="button" data-value="trousers">Trousers</button>
+              <button type="button" data-value="skirt">Skirt</button>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Hair</span>
+            <select id="hairStyle">
+              <option value="crop">Close crop</option>
+              <option value="side">Side part</option>
+              <option value="bob">Short bob</option>
+              <option value="ponytail">Ponytail</option>
+              <option value="cap">Campus cap</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Expression</span>
+            <select id="expression">
+              <option value="neutral">Neutral</option>
+              <option value="tired">Tired</option>
+              <option value="alert">Alert</option>
+            </select>
+          </label>
+
+          <div class="field">
+            <span>Skin tone</span>
+            <div class="swatches" id="skinSwatches" role="group" aria-label="Skin tone"></div>
+          </div>
+
+          <div class="field">
+            <span>Hair color</span>
+            <div class="swatches" id="hairSwatches" role="group" aria-label="Hair color"></div>
+          </div>
+        </div>
+
+        <div class="tab-page" data-page="uniform">
+          <label class="field">
+            <span>Campus role</span>
+            <select id="outfitPreset">
+              <option value="student">UC student</option>
+              <option value="engineering">Engineering student</option>
+              <option value="security">Night security</option>
+              <option value="caretaker">Campus caretaker</option>
+              <option value="afterhours">After-hours civilian</option>
+            </select>
+          </label>
+
+          <div class="palette-editor">
+            <label>
+              <span>Top</span>
+              <input id="topColor" type="color" value="#a9c9eb">
+            </label>
+            <label>
+              <span>Bottom</span>
+              <input id="bottomColor" type="color" value="#cdb891">
+            </label>
+            <label>
+              <span>Accent</span>
+              <input id="accentColor" type="color" value="#1e4f8a">
+            </label>
+          </div>
+
+          <label class="check-row">
+            <input id="showBadge" type="checkbox" checked>
+            <span>
+              <strong>UC ID + chest mark</strong>
+              <small>Theme-ready school identification</small>
+            </span>
+          </label>
+
+          <label class="check-row">
+            <input id="weathered" type="checkbox" checked>
+            <span>
+              <strong>Weathered texture</strong>
+              <small>Low-resolution fabric noise</small>
+            </span>
+          </label>
+
+          <div class="reference-card">
+            <img src="ref/uc_uniform.png" alt="UC Banilad uniform reference">
+            <div>
+              <span class="eyebrow">SOURCE 01</span>
+              <strong>UC Banilad uniform</strong>
+              <small>Palette and badge reference</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-page" data-page="gear">
+          <div class="field">
+            <span>Right-hand prop</span>
+            <div class="gear-grid" id="gearOptions" role="group" aria-label="Right-hand prop">
+              <button class="gear-option is-active" type="button" data-value="none">
+                <b>—</b><span>None</span>
+              </button>
+              <button class="gear-option" type="button" data-value="flashlight">
+                <b>▰</b><span>Flashlight</span>
+              </button>
+              <button class="gear-option" type="button" data-value="baton">
+                <b>╱</b><span>Baton</span>
+              </button>
+              <button class="gear-option" type="button" data-value="book">
+                <b>▥</b><span>Notebook</span>
+              </button>
+            </div>
+          </div>
+
+          <label class="check-row">
+            <input id="backpack" type="checkbox">
+            <span>
+              <strong>Campus backpack</strong>
+              <small>Attached to the torso rig</small>
+            </span>
+          </label>
+
+          <div class="field seed-field">
+            <span>Variation seed <output id="seedOutput">42</output></span>
+            <input id="seed" type="range" min="1" max="999" value="42">
+          </div>
+
+          <button class="button button-random" id="randomizeButton" type="button">
+            RANDOMIZE PERSONNEL
+          </button>
+        </div>
+      </aside>
+
+      <section class="viewport-wrap" aria-label="3D NPC preview">
+        <div id="viewport"></div>
+        <div class="scanline" aria-hidden="true"></div>
+        <div class="viewfinder" aria-hidden="true">
+          <i class="corner corner-tl"></i>
+          <i class="corner corner-tr"></i>
+          <i class="corner corner-bl"></i>
+          <i class="corner corner-br"></i>
+        </div>
+
+        <div class="viewport-label">
+          <span class="record-dot"></span>
+          <span>CAM 08 / SOUTH HALL</span>
+        </div>
+
+        <div class="integrity-badge" id="integrityBadge">
+          <span class="integrity-icon">✓</span>
+          <span>
+            <small>RIG INTEGRITY</small>
+            <strong id="integrityText">18 / 18 CONNECTED</strong>
+          </span>
+        </div>
+
+        <div class="model-card">
+          <span id="modelRole">UC STUDENT</span>
+          <strong id="modelName">HALLWAY STUDENT 042</strong>
+          <small id="modelMeta">1.78 M / LOW POLY / IDLE</small>
+        </div>
+
+        <div class="viewport-tools">
+          <button id="resetCamera" type="button" title="Reset camera">RESET VIEW</button>
+          <button id="toggleTurntable" type="button" aria-pressed="false">TURNTABLE</button>
+        </div>
+
+        <p class="drag-hint">DRAG TO ORBIT · WHEEL TO ZOOM</p>
+      </section>
+
+      <aside class="panel panel-right" aria-label="Animation and export controls">
+        <div class="panel-heading panel-heading-compact">
+          <div>
+            <span class="eyebrow">MOTION ARCHIVE</span>
+            <h2>Animations</h2>
+          </div>
+          <span class="clip-count">05 CLIPS</span>
+        </div>
+
+        <div class="animation-list" id="animationList">
+          <button class="animation-card is-active" type="button" data-clip="Idle">
+            <span class="play-icon">Ⅱ</span>
+            <span><strong>Idle</strong><small>2.4 s · loop</small></span>
+            <i>01</i>
+          </button>
+          <button class="animation-card" type="button" data-clip="Walk">
+            <span class="play-icon">▶</span>
+            <span><strong>Walk</strong><small>1.0 s · loop</small></span>
+            <i>02</i>
+          </button>
+          <button class="animation-card" type="button" data-clip="Run">
+            <span class="play-icon">▶</span>
+            <span><strong>Run</strong><small>0.7 s · loop</small></span>
+            <i>03</i>
+          </button>
+          <button class="animation-card" type="button" data-clip="Attack">
+            <span class="play-icon">▶</span>
+            <span><strong>Attack</strong><small>0.8 s · one shot</small></span>
+            <i>04</i>
+          </button>
+          <button class="animation-card" type="button" data-clip="Alert">
+            <span class="play-icon">▶</span>
+            <span><strong>Alert</strong><small>2.4 s · loop</small></span>
+            <i>05</i>
+          </button>
+        </div>
+
+        <label class="field speed-field">
+          <span>Playback speed <output id="speedOutput">1.0×</output></span>
+          <input id="animationSpeed" type="range" min="0.25" max="1.75" step="0.25" value="1">
+        </label>
+
+        <div class="export-block">
+          <div class="section-label">
+            <span>INCLUDE IN GLB</span>
+            <button id="toggleAllClips" type="button">Clear all</button>
+          </div>
+          <div class="clip-checks">
+            <label><input type="checkbox" value="Idle" checked><span>Idle</span></label>
+            <label><input type="checkbox" value="Walk" checked><span>Walk</span></label>
+            <label><input type="checkbox" value="Run" checked><span>Run</span></label>
+            <label><input type="checkbox" value="Attack" checked><span>Attack</span></label>
+            <label><input type="checkbox" value="Alert" checked><span>Alert</span></label>
+          </div>
+        </div>
+
+        <div class="mesh-readout" aria-label="Model statistics">
+          <div><span>TRIANGLES</span><strong id="triangleCount">0000</strong></div>
+          <div><span>PARTS</span><strong id="partCount">00</strong></div>
+          <div><span>FORMAT</span><strong>GLB 2.0</strong></div>
+        </div>
+
+        <div class="export-note">
+          <span>GODOT READY</span>
+          <p>Named node hierarchy, embedded materials, and selected animation clips.</p>
+        </div>
+
+        <button class="button button-export button-export-wide" id="exportButtonSide" type="button">
+          EXPORT ANIMATED GLB
+        </button>
+      </aside>
+    </main>
+
+    <footer class="statusbar">
+      <span id="statusMessage">READY / MODEL INTACT</span>
+      <span>FACE +Z</span>
+      <span>Y-UP</span>
+      <span class="statusbar-grow"></span>
+      <span>UCB-NPC-TOOLS / V3.0</span>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
+
+const PRESETS = {
+  student: {
+    label: "UC Student",
+    top: "#a9c9eb",
+    bottom: "#cdb891",
+    accent: "#1e4f8a",
+    gear: "none",
+  },
+  engineering: {
+    label: "Engineering Student",
+    top: "#d2a94a",
+    bottom: "#71869d",
+    accent: "#d35c24",
+    gear: "book",
+  },
+  security: {
+    label: "Night Security",
+    top: "#253d55",
+    bottom: "#343e49",
+    accent: "#d2b45d",
+    gear: "baton",
+  },
+  caretaker: {
+    label: "Campus Caretaker",
+    top: "#40594b",
+    bottom: "#50483c",
+    accent: "#b98a51",
+    gear: "flashlight",
+  },
+  afterhours: {
+    label: "After-hours Civilian",
+    top: "#343842",
+    bottom: "#22272d",
+    accent: "#8d3f43",
+    gear: "flashlight",
+  },
+};
+
+const SKIN_TONES = [
+  { label: "Fair", base: "#e2bb9a", shade: "#c89978" },
+  { label: "Warm", base: "#c99e77", shade: "#ab7f5e" },
+  { label: "Medium", base: "#b8845d", shade: "#956545" },
+  { label: "Olive", base: "#ad8c68", shade: "#8e7052" },
+  { label: "Deep", base: "#88583d", shade: "#68402c" },
+  { label: "Dark", base: "#62402f", shade: "#472d22" },
+];
+
+const HAIR_COLORS = [
+  { label: "Black", color: "#171311" },
+  { label: "Soft black", color: "#292321" },
+  { label: "Dark brown", color: "#3d2b22" },
+  { label: "Brown", color: "#654532" },
+  { label: "Ash", color: "#494849" },
+];
+
+const FRAME_SCALE = {
+  compact: { x: 1.03, y: 0.84, height: 1.66 },
+  average: { x: 1, y: 0.9, height: 1.78 },
+  tall: { x: 0.96, y: 0.965, height: 1.91 },
+};
+
+const REQUIRED_NODES = [
+  "Hips",
+  "Pelvis",
+  "Torso",
+  "Neck",
+  "Head",
+  "Arm_L",
+  "Elbow_L",
+  "Hand_L",
+  "Arm_R",
+  "Elbow_R",
+  "Hand_R",
+  "Leg_L",
+  "Knee_L",
+  "Foot_L",
+  "Leg_R",
+  "Knee_R",
+  "Foot_R",
+  "Skull",
+];
+
+const state = {
+  name: "Hallway Student 042",
+  frame: "average",
+  cut: "trousers",
+  hairStyle: "crop",
+  expression: "neutral",
+  skinIndex: 1,
+  hairIndex: 0,
+  preset: "student",
+  topColor: PRESETS.student.top,
+  bottomColor: PRESETS.student.bottom,
+  accentColor: PRESETS.student.accent,
+  showBadge: true,
+  weathered: true,
+  gear: "none",
+  backpack: false,
+  seed: 42,
+  clip: "Idle",
+  speed: 1,
+  turntable: false,
+};
+
+const viewport = document.querySelector("#viewport");
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#0b1015");
+scene.fog = new THREE.Fog("#0b1015", 4.8, 12);
+
+const camera = new THREE.PerspectiveCamera(37, 1, 0.1, 30);
+camera.position.set(2.15, 1.48, 3.35);
+
+const renderer = new THREE.WebGLRenderer({
+  antialias: false,
+  alpha: false,
+  powerPreference: "high-performance",
+});
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.35));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.BasicShadowMap;
+viewport.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.075;
+controls.enablePan = false;
+controls.minDistance = 2;
+controls.maxDistance = 5.5;
+controls.minPolarAngle = 0.42;
+controls.maxPolarAngle = Math.PI * 0.52;
+controls.target.set(0, 0.95, 0);
+
+const modelStage = new THREE.Group();
+modelStage.name = "PreviewStage";
+scene.add(modelStage);
+
+let npcRoot = null;
+let mixer = null;
+let currentAction = null;
+let clips = [];
+let rebuildFrame = 0;
+let toastTimer = 0;
+const restPoses = new WeakMap();
+
+setupEnvironment();
+
+function setupEnvironment() {
+  scene.add(new THREE.HemisphereLight(0xc9d9e7, 0x252019, 1.3));
+
+  const key = new THREE.DirectionalLight(0xffecd4, 1.45);
+  key.position.set(2.8, 4.5, 3.2);
+  key.castShadow = true;
+  key.shadow.mapSize.set(512, 512);
+  key.shadow.camera.left = -2.5;
+  key.shadow.camera.right = 2.5;
+  key.shadow.camera.top = 3;
+  key.shadow.camera.bottom = -1;
+  scene.add(key);
+
+  const hallLight = new THREE.DirectionalLight(0x4c79a7, 0.75);
+  hallLight.position.set(-3, 2, -4);
+  scene.add(hallLight);
+
+  const rim = new THREE.PointLight(0x7bb4dc, 1.8, 7);
+  rim.position.set(-2.6, 1.7, -1.5);
+  scene.add(rim);
+
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(12, 12),
+    new THREE.MeshLambertMaterial({ color: 0x151c22, flatShading: true }),
+  );
+  floor.name = "PreviewFloor";
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  const grid = new THREE.GridHelper(12, 24, 0x31546d, 0x202c35);
+  grid.position.y = 0.003;
+  grid.material.opacity = 0.45;
+  grid.material.transparent = true;
+  scene.add(grid);
+
+  const wallMaterial = new THREE.MeshLambertMaterial({
+    color: 0x18222b,
+    flatShading: true,
+  });
+  const blueBandMaterial = new THREE.MeshLambertMaterial({
+    color: 0x244e70,
+    flatShading: true,
+  });
+  const darkMaterial = new THREE.MeshLambertMaterial({
+    color: 0x090d11,
+    flatShading: true,
+  });
+
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(9, 3.2, 0.16), wallMaterial);
+  backWall.position.set(0, 1.55, -3.65);
+  scene.add(backWall);
+
+  const blueBand = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.24, 0.2), blueBandMaterial);
+  blueBand.position.set(0, 0.96, -3.54);
+  scene.add(blueBand);
+
+  for (const x of [-3.15, -1.56, 1.56, 3.15]) {
+    const column = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3.4, 0.3), darkMaterial);
+    column.position.set(x, 1.6, -3.4);
+    scene.add(column);
+  }
+
+  for (const x of [-2.35, -0.78, 0.78, 2.35]) {
+    const windowFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(1.15, 0.76, 0.06),
+      new THREE.MeshLambertMaterial({ color: 0x0c141b, flatShading: true }),
+    );
+    windowFrame.position.set(x, 1.78, -3.54);
+    scene.add(windowFrame);
+
+    for (const offset of [-0.24, 0, 0.24]) {
+      const louver = new THREE.Mesh(
+        new THREE.BoxGeometry(1.03, 0.035, 0.08),
+        new THREE.MeshLambertMaterial({ color: 0x304555, flatShading: true }),
+      );
+      louver.position.set(x, 1.78 + offset, -3.48);
+      louver.rotation.x = -0.2;
+      scene.add(louver);
+    }
+  }
+
+  const lightHousing = new THREE.Mesh(
+    new THREE.BoxGeometry(1.4, 0.06, 0.26),
+    new THREE.MeshBasicMaterial({ color: 0xa9b4aa }),
+  );
+  lightHousing.position.set(-1.85, 2.83, -2.7);
+  scene.add(lightHousing);
+
+  const lightGlow = new THREE.PointLight(0xaec6b7, 1.1, 5);
+  lightGlow.position.set(-1.85, 2.65, -2.65);
+  scene.add(lightGlow);
+}
+
+function rng(seed) {
+  let value = Math.max(1, Math.floor(seed)) % 2147483647;
+  return () => {
+    value = (value * 16807) % 2147483647;
+    return (value - 1) / 2147483646;
+  };
+}
+
+function colorNumber(value) {
+  return new THREE.Color(value).getHex();
+}
+
+function shadeHex(value, factor) {
+  const color = new THREE.Color(value);
+  color.multiplyScalar(factor);
+  return `#${color.getHexString()}`;
+}
+
+function makeFabricTexture(hex, seed, weathered, stripe = false) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 32;
+  canvas.height = 32;
+  const context = canvas.getContext("2d");
+  const base = new THREE.Color(hex);
+  const red = Math.round(base.r * 255);
+  const green = Math.round(base.g * 255);
+  const blue = Math.round(base.b * 255);
+  const random = rng(seed);
+
+  context.fillStyle = hex;
+  context.fillRect(0, 0, 32, 32);
+
+  if (stripe) {
+    context.fillStyle = `rgba(${Math.max(0, red - 30)}, ${Math.max(0, green - 30)}, ${Math.max(0, blue - 30)}, .36)`;
+    for (let x = 0; x < 32; x += 5) {
+      context.fillRect(x, 0, 1, 32);
+    }
+  }
+
+  if (weathered) {
+    for (let index = 0; index < 115; index += 1) {
+      const shift = random() > 0.5 ? 19 : -20;
+      context.fillStyle = `rgba(${THREE.MathUtils.clamp(red + shift, 0, 255)}, ${THREE.MathUtils.clamp(green + shift, 0, 255)}, ${THREE.MathUtils.clamp(blue + shift, 0, 255)}, .46)`;
+      context.fillRect(Math.floor(random() * 32), Math.floor(random() * 32), 1, 1);
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.name = `Fabric_${hex.replace("#", "")}_${seed}`;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  texture.generateMipmaps = false;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function makeFaceTexture(skin, shade, expression, seed) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const context = canvas.getContext("2d");
+  const random = rng(seed + 81);
+
+  context.imageSmoothingEnabled = false;
+  context.fillStyle = skin;
+  context.fillRect(0, 0, 64, 64);
+
+  context.fillStyle = shade;
+  context.fillRect(4, 31, 11, 13);
+  context.fillRect(49, 31, 11, 13);
+  context.fillRect(28, 33, 8, 10);
+  context.fillRect(22, 54, 20, 6);
+
+  const eyeY = expression === "tired" ? 30 : 27;
+  const eyeHeight = expression === "alert" ? 8 : expression === "tired" ? 4 : 6;
+  context.fillStyle = "#eeeae3";
+  context.fillRect(15, eyeY, 11, eyeHeight);
+  context.fillRect(38, eyeY, 11, eyeHeight);
+  context.fillStyle = "#2a211b";
+  context.fillRect(19, eyeY + 1, 4, Math.max(3, eyeHeight - 1));
+  context.fillRect(41, eyeY + 1, 4, Math.max(3, eyeHeight - 1));
+  context.fillStyle = "#0c0c0c";
+  context.fillRect(20, eyeY + 2, 2, 2);
+  context.fillRect(42, eyeY + 2, 2, 2);
+
+  context.fillStyle = "#2a201b";
+  if (expression === "alert") {
+    context.fillRect(14, 19, 13, 3);
+    context.fillRect(37, 19, 13, 3);
+  } else if (expression === "tired") {
+    context.fillRect(14, 23, 13, 2);
+    context.fillRect(37, 23, 13, 2);
+    context.fillStyle = shade;
+    context.fillRect(15, 35, 11, 2);
+    context.fillRect(38, 35, 11, 2);
+  } else {
+    context.fillRect(14, 21, 13, 3);
+    context.fillRect(37, 21, 13, 3);
+  }
+
+  context.fillStyle = shade;
+  context.fillRect(30, 32, 4, 11);
+  context.fillRect(28, 41, 8, 3);
+
+  context.fillStyle = expression === "alert" ? "#6f3f3d" : "#80534d";
+  if (expression === "alert") {
+    context.fillRect(27, 49, 10, 5);
+    context.fillStyle = "#251a18";
+    context.fillRect(29, 50, 6, 3);
+  } else if (expression === "tired") {
+    context.fillRect(26, 50, 13, 2);
+    context.fillRect(26, 49, 3, 1);
+  } else {
+    context.fillRect(26, 49, 13, 3);
+  }
+
+  context.fillStyle = shade;
+  for (let index = 0; index < 10; index += 1) {
+    context.fillRect(13 + Math.floor(random() * 39), 38 + Math.floor(random() * 9), 1, 1);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.name = `Face_${expression}_${seed}`;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  texture.generateMipmaps = false;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function material(name, color, texture = null, basic = false) {
+  const MaterialClass = basic ? THREE.MeshBasicMaterial : THREE.MeshStandardMaterial;
+  const parameters = {
+    color: texture ? 0xffffff : colorNumber(color),
+    map: texture,
+    flatShading: !basic,
+  };
+  if (!basic) {
+    parameters.roughness = 0.86;
+    parameters.metalness = 0;
+  }
+  const output = new MaterialClass(parameters);
+  output.name = name;
+  return output;
+}
+
+function box(parent, name, size, position, meshMaterial, rotation = null) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), meshMaterial);
+  mesh.name = name;
+  mesh.position.set(...position);
+  if (rotation) {
+    mesh.rotation.set(...rotation);
+  }
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
+function cylinder(parent, name, radiusTop, radiusBottom, height, position, meshMaterial, segments = 6, rotation = null) {
+  const mesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segments, 1, false),
+    meshMaterial,
+  );
+  mesh.name = name;
+  mesh.position.set(...position);
+  if (rotation) {
+    mesh.rotation.set(...rotation);
+  }
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
+function taperedBox(
+  parent,
+  name,
+  size,
+  position,
+  meshMaterial,
+  topScale = 1,
+  bottomScale = 1,
+  topDepthScale = 1,
+  bottomDepthScale = 1,
+  rotation = null,
+) {
+  const [width, height, depth] = size;
+  const geometry = new THREE.BoxGeometry(width, height, depth, 1, 1, 1);
+  const positions = geometry.attributes.position;
+  for (let index = 0; index < positions.count; index += 1) {
+    const top = positions.getY(index) > 0;
+    positions.setX(index, positions.getX(index) * (top ? topScale : bottomScale));
+    positions.setZ(index, positions.getZ(index) * (top ? topDepthScale : bottomDepthScale));
+  }
+  positions.needsUpdate = true;
+  geometry.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(geometry, meshMaterial);
+  mesh.name = name;
+  mesh.position.set(...position);
+  if (rotation) {
+    mesh.rotation.set(...rotation);
+  }
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
+function facetedLimb(
+  parent,
+  name,
+  radiusTop,
+  radiusBottom,
+  height,
+  position,
+  meshMaterial,
+  depthScale = 0.82,
+) {
+  const mesh = cylinder(
+    parent,
+    name,
+    radiusTop,
+    radiusBottom,
+    height,
+    position,
+    meshMaterial,
+    6,
+  );
+  mesh.scale.z = depthScale;
+  mesh.rotation.y = Math.PI / 6;
+  return mesh;
+}
+
+function ellipsoid(parent, name, radii, position, meshMaterial, segments = 8) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(1, segments, 5),
+    meshMaterial,
+  );
+  mesh.name = name;
+  mesh.position.set(...position);
+  mesh.scale.set(...radii);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
+function hairCap(parent, name, radii, position, meshMaterial) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 8, 3, 0, Math.PI * 2, 0, Math.PI / 2),
+    meshMaterial,
+  );
+  mesh.name = name;
+  mesh.position.set(...position);
+  mesh.scale.set(...radii);
+  mesh.rotation.y = Math.PI / 8;
+  mesh.castShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
+function shoeWedge(parent, name, position, meshMaterial) {
+  const geometry = new THREE.BoxGeometry(0.16, 0.115, 0.31, 1, 1, 1);
+  const positions = geometry.attributes.position;
+  for (let index = 0; index < positions.count; index += 1) {
+    const front = positions.getZ(index) > 0;
+    const top = positions.getY(index) > 0;
+    if (front && top) {
+      positions.setY(index, positions.getY(index) - 0.025);
+    }
+    if (front) {
+      positions.setX(index, positions.getX(index) * 0.9);
+    }
+  }
+  positions.needsUpdate = true;
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, meshMaterial);
+  mesh.name = name;
+  mesh.position.set(...position);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  return mesh;
+}
+
+function group(parent, name, position) {
+  const output = new THREE.Group();
+  output.name = name;
+  output.position.set(...position);
+  parent.add(output);
+  return output;
+}
+
+function buildNpc() {
+  const root = new THREE.Group();
+  root.name = "UCB_NPC";
+  const scale = FRAME_SCALE[state.frame];
+  root.scale.set(scale.x, scale.y, scale.x);
+
+  const skin = SKIN_TONES[state.skinIndex];
+  const hair = HAIR_COLORS[state.hairIndex];
+  const topMap = makeFabricTexture(state.topColor, state.seed + 13, state.weathered, true);
+  const bottomMap = makeFabricTexture(state.bottomColor, state.seed + 27, state.weathered, false);
+
+  const materials = {
+    skin: material("Skin", skin.base),
+    skinShade: material("Skin_Shade", skin.shade),
+    hair: material("Hair", hair.color),
+    top: material("Uniform_Top", "#ffffff", topMap),
+    topShade: material("Uniform_Top_Shade", shadeHex(state.topColor, 0.72)),
+    bottom: material("Uniform_Bottom", "#ffffff", bottomMap),
+    bottomShade: material("Uniform_Bottom_Shade", shadeHex(state.bottomColor, 0.72)),
+    accent: material("Role_Accent", state.accentColor),
+    shoe: material("Shoes", "#1c2024"),
+    white: material("Badge_White", "#e6e5dd"),
+    dark: material("Hardware_Dark", "#171a1d"),
+    metal: material("Hardware_Metal", "#89949b"),
+    eyeWhite: material("Eye_White", "#e8e4da"),
+    eyeDark: material("Eye_Dark", "#171411"),
+    mouth: material("Mouth", "#653d3a"),
+  };
+
+  const hips = group(root, "Hips", [0, 0.95, 0]);
+  taperedBox(
+    hips,
+    "Pelvis",
+    [0.38, 0.2, 0.24],
+    [0, 0, 0],
+    materials.bottom,
+    1,
+    0.88,
+    1,
+    0.9,
+  );
+
+  if (state.cut === "skirt") {
+    const skirt = cylinder(hips, "Skirt", 0.25, 0.34, 0.47, [0, -0.17, 0], materials.bottom, 6);
+    skirt.scale.z = 0.74;
+    skirt.rotation.y = Math.PI / 4;
+    taperedBox(hips, "Skirt_Hem", [0.48, 0.045, 0.29], [0, -0.41, 0], materials.bottomShade, 1, 1.02);
+  }
+
+  addLeg(hips, -1, materials);
+  addLeg(hips, 1, materials);
+
+  const torso = group(hips, "Torso", [0, 0.07, 0]);
+  taperedBox(
+    torso,
+    "Torso_Mesh",
+    [0.43, 0.51, 0.25],
+    [0, 0.255, 0],
+    materials.top,
+    1.12,
+    0.84,
+    1,
+    0.88,
+  );
+  taperedBox(
+    torso,
+    "Waist_Band",
+    [0.38, 0.058, 0.225],
+    [0, 0.012, 0],
+    materials.topShade,
+    1,
+    0.96,
+  );
+
+  if (state.preset === "security") {
+    taperedBox(torso, "Security_Vest", [0.38, 0.3, 0.05], [0, 0.27, 0.145], materials.topShade, 1.08, 0.88);
+    box(torso, "Security_Patch", [0.16, 0.07, 0.02], [0.08, 0.32, 0.205], materials.accent);
+  } else {
+    taperedBox(torso, "Collar_L", [0.135, 0.045, 0.12], [-0.07, 0.5, 0.075], materials.topShade, 0.72, 1, 0.8, 1, [0.12, 0.18, -0.25]);
+    taperedBox(torso, "Collar_R", [0.135, 0.045, 0.12], [0.07, 0.5, 0.075], materials.white, 0.72, 1, 0.8, 1, [0.12, -0.18, 0.25]);
+    box(torso, "Shirt_Placket", [0.032, 0.29, 0.014], [0, 0.3, 0.131], materials.topShade);
+    for (const buttonY of [0.4, 0.32, 0.24]) {
+      box(torso, `Shirt_Button_${buttonY}`, [0.015, 0.015, 0.012], [0, buttonY, 0.143], materials.white);
+    }
+  }
+
+  addArm(torso, -1, materials);
+  addArm(torso, 1, materials);
+
+  const neck = group(torso, "Neck", [0, 0.57, 0]);
+  cylinder(neck, "Neck_Mesh", 0.06, 0.072, 0.13, [0, 0, 0], materials.skin, 8);
+
+  const head = group(neck, "Head", [0, 0.19, 0.01]);
+  ellipsoid(head, "Skull", [0.15, 0.18, 0.14], [0, 0.005, 0], materials.skin, 8);
+  taperedBox(head, "Jaw", [0.22, 0.11, 0.2], [0, -0.125, 0.005], materials.skinShade, 1.04, 0.76, 1, 0.83);
+  ellipsoid(head, "Ear_L", [0.025, 0.045, 0.022], [-0.153, 0, 0], materials.skinShade, 6);
+  ellipsoid(head, "Ear_R", [0.025, 0.045, 0.022], [0.153, 0, 0], materials.skinShade, 6);
+  addFace(head, materials);
+
+  addHair(head, materials);
+
+  if (state.showBadge) {
+    addIdentification(torso, materials);
+  }
+
+  if (state.backpack) {
+    addBackpack(torso, materials);
+  }
+
+  const rightHand = root.getObjectByName("Hand_R");
+  addGear(rightHand, materials);
+
+  root.userData.ucbNpc = {
+    title: state.name,
+    theme: "UCB Inday / PSX school horror",
+    campusRole: PRESETS[state.preset].label,
+    uniformCut: state.cut,
+    bodyFrame: state.frame,
+    facing: "+Z",
+    upAxis: "Y",
+    seed: state.seed,
+    generator: "UCB NPC Works 3.0",
+  };
+
+  captureRestPose(root);
+  return root;
+}
+
+function addLeg(hips, side, materials) {
+  const suffix = side < 0 ? "L" : "R";
+  const leg = group(hips, `Leg_${suffix}`, [side * 0.105, -0.085, 0]);
+  const legMaterial = state.cut === "skirt"
+    ? (side < 0 ? materials.skin : materials.skinShade)
+    : (side < 0 ? materials.bottom : materials.bottomShade);
+
+  facetedLimb(leg, `Thigh_${suffix}`, 0.092, 0.074, 0.42, [0, -0.21, 0], legMaterial, 0.86);
+  if (state.cut !== "skirt") {
+    box(leg, `Trouser_Crease_${suffix}`, [0.012, 0.36, 0.012], [0, -0.21, 0.075], materials.bottomShade);
+  }
+
+  const knee = group(leg, `Knee_${suffix}`, [0, -0.405, 0]);
+  facetedLimb(knee, `Shin_${suffix}`, 0.073, 0.059, 0.42, [0, -0.21, 0.008], legMaterial, 0.84);
+  const foot = group(knee, `Foot_${suffix}`, [0, -0.405, 0.01]);
+  cylinder(foot, `Ankle_${suffix}`, 0.056, 0.06, 0.1, [0, -0.01, 0], legMaterial, 6);
+  shoeWedge(foot, `Shoe_${suffix}`, [0, -0.075, 0.075], materials.shoe);
+  box(foot, `Sole_${suffix}`, [0.164, 0.024, 0.315], [0, -0.142, 0.075], materials.dark);
+}
+
+function addArm(torso, side, materials) {
+  const suffix = side < 0 ? "L" : "R";
+  const skinMaterial = side < 0 ? materials.skin : materials.skinShade;
+  const arm = group(torso, `Arm_${suffix}`, [side * 0.255, 0.48, 0]);
+  arm.rotation.z = side * 0.09;
+
+  const sleeve = cylinder(arm, `Sleeve_${suffix}`, 0.098, 0.078, 0.2, [side * 0.025, -0.075, 0], materials.top, 6);
+  sleeve.scale.z = 0.88;
+  sleeve.rotation.y = Math.PI / 6;
+  facetedLimb(arm, `UpperArm_${suffix}`, 0.066, 0.055, 0.29, [side * 0.035, -0.235, 0.006], skinMaterial, 0.86);
+
+  const elbow = group(arm, `Elbow_${suffix}`, [side * 0.035, -0.37, 0.008]);
+  facetedLimb(elbow, `Forearm_${suffix}`, 0.057, 0.046, 0.3, [0, -0.15, 0.012], skinMaterial, 0.82);
+
+  const hand = group(elbow, `Hand_${suffix}`, [0, -0.305, 0.022]);
+  taperedBox(hand, `Hand_Mesh_${suffix}`, [0.105, 0.14, 0.075], [0, -0.055, 0], skinMaterial, 1, 0.76, 1, 0.82);
+  taperedBox(
+    hand,
+    `Thumb_${suffix}`,
+    [0.04, 0.095, 0.045],
+    [-side * 0.055, -0.045, 0.018],
+    skinMaterial,
+    0.8,
+    0.62,
+    1,
+    0.8,
+    [0, 0, side * 0.42],
+  );
+}
+
+function addFace(head, materials) {
+  const tired = state.expression === "tired";
+  const alert = state.expression === "alert";
+  const eyeHeight = alert ? 0.024 : tired ? 0.012 : 0.019;
+  const eyeY = tired ? 0.017 : 0.026;
+  const browY = alert ? 0.078 : tired ? 0.062 : 0.071;
+
+  for (const side of [-1, 1]) {
+    const suffix = side < 0 ? "L" : "R";
+    taperedBox(
+      head,
+      `Eye_${suffix}`,
+      [0.052, eyeHeight, 0.012],
+      [side * 0.052, eyeY, 0.136],
+      materials.eyeWhite,
+      0.9,
+      1,
+    );
+    box(
+      head,
+      `Pupil_${suffix}`,
+      [0.017, Math.max(0.012, eyeHeight * 0.78), 0.009],
+      [side * 0.047, eyeY, 0.144],
+      materials.eyeDark,
+    );
+    box(
+      head,
+      `Brow_${suffix}`,
+      [0.07, 0.014, 0.014],
+      [side * 0.052, browY, 0.134],
+      materials.hair,
+      [0, 0, side * (alert ? 0.12 : tired ? -0.06 : 0.035)],
+    );
+  }
+
+  taperedBox(
+    head,
+    "Nose",
+    [0.032, 0.078, 0.045],
+    [0, -0.018, 0.145],
+    materials.skinShade,
+    0.68,
+    1,
+    0.55,
+    1,
+  );
+
+  if (alert) {
+    ellipsoid(head, "Mouth", [0.035, 0.018, 0.012], [0, -0.09, 0.119], materials.mouth, 6);
+  } else {
+    box(
+      head,
+      "Mouth",
+      [0.07, tired ? 0.012 : 0.015, 0.012],
+      [0, -0.091, 0.119],
+      materials.mouth,
+      [0, 0, tired ? -0.04 : 0],
+    );
+  }
+}
+
+function addHair(head, materials) {
+  if (state.hairStyle === "crop") {
+    hairCap(head, "Hair_Cap", [0.158, 0.145, 0.15], [0, 0.055, -0.002], materials.hair);
+    taperedBox(head, "Hair_Front", [0.27, 0.065, 0.055], [0, 0.1, 0.115], materials.hair, 0.78, 1.04, 0.6, 1);
+    taperedBox(head, "Hair_Temple_L", [0.045, 0.11, 0.12], [-0.132, 0.045, -0.005], materials.hair, 0.8, 1);
+    taperedBox(head, "Hair_Temple_R", [0.045, 0.11, 0.12], [0.132, 0.045, -0.005], materials.hair, 0.8, 1);
+  } else if (state.hairStyle === "side") {
+    hairCap(head, "Hair_Cap", [0.16, 0.15, 0.152], [0, 0.052, -0.002], materials.hair);
+    taperedBox(head, "Hair_Sweep", [0.21, 0.085, 0.065], [-0.035, 0.095, 0.116], materials.hair, 0.65, 1.08, 0.6, 1, [0.08, 0, -0.16]);
+    taperedBox(head, "Hair_Side", [0.055, 0.19, 0.16], [-0.137, 0.025, -0.012], materials.hair, 0.8, 1);
+  } else if (state.hairStyle === "bob") {
+    hairCap(head, "Hair_Cap", [0.164, 0.15, 0.155], [0, 0.05, -0.004], materials.hair);
+    ellipsoid(head, "Hair_Back", [0.16, 0.18, 0.08], [0, -0.02, -0.105], materials.hair, 8);
+    taperedBox(head, "Hair_Side_L", [0.06, 0.28, 0.15], [-0.14, -0.045, -0.008], materials.hair, 0.9, 0.72);
+    taperedBox(head, "Hair_Side_R", [0.06, 0.28, 0.15], [0.14, -0.045, -0.008], materials.hair, 0.9, 0.72);
+  } else if (state.hairStyle === "ponytail") {
+    hairCap(head, "Hair_Cap", [0.16, 0.145, 0.152], [0, 0.052, -0.002], materials.hair);
+    ellipsoid(head, "Hair_Back", [0.145, 0.12, 0.07], [0, 0.01, -0.115], materials.hair, 8);
+    const tie = group(head, "Ponytail", [0, 0.03, -0.18]);
+    facetedLimb(tie, "Ponytail_Mesh", 0.047, 0.025, 0.34, [0, -0.18, 0], materials.hair, 0.9);
+    box(tie, "Hair_Tie", [0.08, 0.055, 0.08], [0, -0.01, 0], materials.accent);
+  } else {
+    hairCap(head, "Hair_Under_Cap", [0.15, 0.1, 0.145], [0, 0.04, -0.005], materials.hair);
+    hairCap(head, "Campus_Cap", [0.177, 0.11, 0.17], [0, 0.105, -0.006], materials.topShade);
+    taperedBox(head, "Cap_Brim", [0.26, 0.032, 0.17], [0, 0.09, 0.135], materials.accent, 0.72, 1, 0.5, 1);
+  }
+}
+
+function addIdentification(torso, materials) {
+  const idGroup = group(torso, "Campus_ID", [0, 0, 0]);
+  box(idGroup, "Lanyard_L", [0.025, 0.33, 0.018], [-0.065, 0.32, 0.155], materials.accent, [0.08, 0, -0.22]);
+  box(idGroup, "Lanyard_R", [0.025, 0.33, 0.018], [0.065, 0.32, 0.155], materials.accent, [0.08, 0, 0.22]);
+  box(idGroup, "ID_Card", [0.105, 0.14, 0.018], [0, 0.14, 0.17], materials.white);
+  box(idGroup, "ID_Photo", [0.055, 0.055, 0.009], [0, 0.17, 0.181], materials.topShade);
+  box(idGroup, "ID_Stripe", [0.075, 0.018, 0.009], [0, 0.1, 0.181], materials.accent);
+  box(idGroup, "UC_Chest_Mark", [0.065, 0.065, 0.018], [-0.135, 0.34, 0.158], materials.accent);
+  box(idGroup, "UC_Mark_Core", [0.027, 0.027, 0.009], [-0.135, 0.34, 0.17], materials.white);
+}
+
+function addBackpack(torso, materials) {
+  const backpack = group(torso, "Backpack", [0, 0.28, -0.18]);
+  box(backpack, "Backpack_Body", [0.34, 0.42, 0.2], [0, 0, -0.04], materials.bottomShade);
+  box(backpack, "Backpack_Pocket", [0.24, 0.18, 0.07], [0, -0.08, -0.16], materials.accent);
+  box(backpack, "Backpack_Handle", [0.13, 0.04, 0.04], [0, 0.24, -0.04], materials.dark);
+}
+
+function addGear(hand, materials) {
+  if (!hand || state.gear === "none") {
+    return;
+  }
+
+  const gear = group(hand, "Hand_Prop", [0, -0.065, 0.045]);
+
+  if (state.gear === "flashlight") {
+    cylinder(gear, "Flashlight_Body", 0.038, 0.043, 0.27, [0, -0.11, 0], materials.dark, 8);
+    cylinder(gear, "Flashlight_Head", 0.07, 0.045, 0.09, [0, -0.285, 0], materials.metal, 8);
+    cylinder(gear, "Flashlight_Lens", 0.055, 0.055, 0.012, [0, -0.338, 0], materials.accent, 8);
+  } else if (state.gear === "baton") {
+    cylinder(gear, "Baton", 0.027, 0.033, 0.58, [0, -0.27, 0], materials.dark, 6);
+    cylinder(gear, "Baton_Grip", 0.04, 0.04, 0.18, [0, -0.055, 0], materials.accent, 6);
+  } else if (state.gear === "book") {
+    box(gear, "Notebook", [0.19, 0.29, 0.055], [0, -0.18, 0.02], materials.accent, [0, 0, 0.08]);
+    box(gear, "Notebook_Pages", [0.165, 0.265, 0.058], [0.012, -0.18, 0.02], materials.white, [0, 0, 0.08]);
+    box(gear, "Notebook_Spine", [0.03, 0.29, 0.065], [-0.086, -0.18, 0.02], materials.dark, [0, 0, 0.08]);
+  }
+}
+
+function captureRestPose(root) {
+  root.traverse((node) => {
+    restPoses.set(node, {
+      position: node.position.toArray(),
+      quaternion: node.quaternion.toArray(),
+      scale: node.scale.toArray(),
+    });
+  });
+}
+
+function restoreRestPose(root) {
+  if (!root) {
+    return;
+  }
+  root.traverse((node) => {
+    const rest = restPoses.get(node);
+    if (!rest) {
+      return;
+    }
+    node.position.fromArray(rest.position);
+    node.quaternion.fromArray(rest.quaternion);
+    node.scale.fromArray(rest.scale);
+  });
+}
+
+function makeAnimationClips() {
+  const track = (node, property, times, values) =>
+    new THREE.NumberKeyframeTrack(`${node}.${property}`, times, values);
+
+  const idleTimes = [0, 0.6, 1.2, 1.8, 2.4];
+  const idle = new THREE.AnimationClip("Idle", 2.4, [
+    track("Hips", "position[y]", idleTimes, [0.95, 0.962, 0.95, 0.958, 0.95]),
+    track("Torso", "rotation[x]", idleTimes, [0, 0.012, 0, -0.009, 0]),
+    track("Torso", "rotation[z]", idleTimes, [0, 0.008, 0, -0.008, 0]),
+    track("Head", "rotation[y]", idleTimes, [0, 0.035, 0, -0.028, 0]),
+    track("Arm_L", "rotation[z]", idleTimes, [-0.09, -0.098, -0.09, -0.082, -0.09]),
+    track("Arm_R", "rotation[z]", idleTimes, [0.09, 0.082, 0.09, 0.098, 0.09]),
+  ]);
+
+  const walkTimes = [0, 0.25, 0.5, 0.75, 1];
+  const walk = new THREE.AnimationClip("Walk", 1, [
+    track("Hips", "position[y]", walkTimes, [0.95, 0.925, 0.95, 0.925, 0.95]),
+    track("Hips", "rotation[y]", walkTimes, [0.045, 0, -0.045, 0, 0.045]),
+    track("Leg_L", "rotation[x]", walkTimes, [0.62, 0, -0.62, 0, 0.62]),
+    track("Leg_R", "rotation[x]", walkTimes, [-0.62, 0, 0.62, 0, -0.62]),
+    track("Knee_L", "rotation[x]", walkTimes, [0.04, 0.52, 0.08, 0.02, 0.04]),
+    track("Knee_R", "rotation[x]", walkTimes, [0.08, 0.02, 0.04, 0.52, 0.08]),
+    track("Arm_L", "rotation[x]", walkTimes, [-0.5, 0, 0.5, 0, -0.5]),
+    track("Arm_R", "rotation[x]", walkTimes, [0.5, 0, -0.5, 0, 0.5]),
+    track("Torso", "rotation[z]", walkTimes, [-0.035, 0, 0.035, 0, -0.035]),
+  ]);
+
+  const runTimes = [0, 0.175, 0.35, 0.525, 0.7];
+  const run = new THREE.AnimationClip("Run", 0.7, [
+    track("Hips", "position[y]", runTimes, [0.95, 0.88, 0.95, 0.88, 0.95]),
+    track("Torso", "rotation[x]", runTimes, [-0.16, -0.2, -0.16, -0.2, -0.16]),
+    track("Leg_L", "rotation[x]", runTimes, [0.92, 0, -0.92, 0, 0.92]),
+    track("Leg_R", "rotation[x]", runTimes, [-0.92, 0, 0.92, 0, -0.92]),
+    track("Knee_L", "rotation[x]", runTimes, [0.1, 0.92, 0.15, 0.02, 0.1]),
+    track("Knee_R", "rotation[x]", runTimes, [0.15, 0.02, 0.1, 0.92, 0.15]),
+    track("Arm_L", "rotation[x]", runTimes, [-0.88, 0, 0.88, 0, -0.88]),
+    track("Arm_R", "rotation[x]", runTimes, [0.88, 0, -0.88, 0, 0.88]),
+    track("Elbow_L", "rotation[x]", runTimes, [-0.55, -0.3, -0.55, -0.8, -0.55]),
+    track("Elbow_R", "rotation[x]", runTimes, [-0.55, -0.8, -0.55, -0.3, -0.55]),
+  ]);
+
+  const attackTimes = [0, 0.16, 0.3, 0.48, 0.8];
+  const attack = new THREE.AnimationClip("Attack", 0.8, [
+    track("Hips", "rotation[y]", attackTimes, [0, -0.25, -0.48, 0.12, 0]),
+    track("Torso", "rotation[y]", attackTimes, [0, -0.32, -0.55, 0.15, 0]),
+    track("Torso", "rotation[x]", attackTimes, [0, 0.08, -0.12, -0.08, 0]),
+    track("Arm_R", "rotation[x]", attackTimes, [0, 0.55, -2.05, -1.4, 0]),
+    track("Arm_R", "rotation[z]", attackTimes, [0.09, -0.32, -0.18, -0.02, 0.09]),
+    track("Elbow_R", "rotation[x]", attackTimes, [0, -1.05, -0.18, -0.1, 0]),
+    track("Arm_L", "rotation[x]", attackTimes, [0, -0.85, -1.05, -0.55, 0]),
+    track("Arm_L", "rotation[z]", attackTimes, [-0.09, 0.28, 0.18, 0.05, -0.09]),
+    track("Head", "rotation[y]", attackTimes, [0, 0.18, 0.32, -0.08, 0]),
+  ]);
+
+  const alertTimes = [0, 0.4, 0.8, 1.2, 1.6, 2, 2.4];
+  const alert = new THREE.AnimationClip("Alert", 2.4, [
+    track("Head", "rotation[y]", alertTimes, [0, 0.62, 0.62, -0.52, -0.52, 0, 0]),
+    track("Head", "rotation[x]", alertTimes, [0, -0.08, 0.03, -0.04, 0.05, 0, 0]),
+    track("Arm_L", "rotation[x]", alertTimes, [0, -0.3, -0.3, -0.18, -0.18, 0, 0]),
+    track("Arm_R", "rotation[x]", alertTimes, [0, -0.24, -0.24, -0.32, -0.32, 0, 0]),
+    track("Torso", "rotation[y]", alertTimes, [0, 0.1, 0.1, -0.1, -0.1, 0, 0]),
+    track("Hips", "position[y]", alertTimes, [0.95, 0.945, 0.95, 0.945, 0.95, 0.945, 0.95]),
+  ]);
+
+  return [idle, walk, run, attack, alert];
+}
+
+function disposeModel(root) {
+  if (!root) {
+    return;
+  }
+  const materials = new Set();
+  const textures = new Set();
+  root.traverse((node) => {
+    if (node.geometry) {
+      node.geometry.dispose();
+    }
+    if (node.material) {
+      const nodeMaterials = Array.isArray(node.material) ? node.material : [node.material];
+      nodeMaterials.forEach((item) => {
+        materials.add(item);
+        if (item.map) {
+          textures.add(item.map);
+        }
+      });
+    }
+  });
+  textures.forEach((texture) => texture.dispose());
+  materials.forEach((item) => item.dispose());
+}
+
+function queueRebuild() {
+  window.cancelAnimationFrame(rebuildFrame);
+  rebuildFrame = window.requestAnimationFrame(rebuildModel);
+}
+
+function rebuildModel() {
+  if (mixer) {
+    mixer.stopAllAction();
+  }
+  if (npcRoot) {
+    modelStage.remove(npcRoot);
+    disposeModel(npcRoot);
+  }
+
+  npcRoot = buildNpc();
+  modelStage.add(npcRoot);
+  clips = makeAnimationClips();
+  mixer = new THREE.AnimationMixer(npcRoot);
+  mixer.addEventListener("finished", (event) => {
+    if (event.action.getClip().name === "Attack") {
+      playAnimation("Idle");
+    }
+  });
+
+  playAnimation(state.clip, true);
+  updateReadouts();
+  validateIntegrity();
+}
+
+function playAnimation(name, immediate = false) {
+  const clip = clips.find((item) => item.name === name);
+  if (!clip || !mixer) {
+    return;
+  }
+
+  const nextAction = mixer.clipAction(clip);
+  nextAction.reset();
+  nextAction.enabled = true;
+  nextAction.setEffectiveTimeScale(state.speed);
+  nextAction.setEffectiveWeight(1);
+
+  if (name === "Attack") {
+    nextAction.setLoop(THREE.LoopOnce, 1);
+    nextAction.clampWhenFinished = true;
+  } else {
+    nextAction.setLoop(THREE.LoopRepeat, Infinity);
+    nextAction.clampWhenFinished = false;
+  }
+
+  if (currentAction && currentAction !== nextAction) {
+    if (immediate) {
+      currentAction.stop();
+    } else {
+      currentAction.fadeOut(0.16);
+    }
+  }
+
+  if (immediate) {
+    nextAction.play();
+  } else {
+    nextAction.fadeIn(0.16).play();
+  }
+
+  currentAction = nextAction;
+  state.clip = name;
+  document.querySelectorAll(".animation-card").forEach((button) => {
+    const active = button.dataset.clip === name;
+    button.classList.toggle("is-active", active);
+    button.querySelector(".play-icon").textContent = active ? "Ⅱ" : "▶";
+  });
+  updateReadouts();
+}
+
+function validateIntegrity() {
+  const missing = REQUIRED_NODES.filter((name) => !npcRoot.getObjectByName(name));
+  const relationships = [
+    ["Torso", "Hips"],
+    ["Arm_L", "Torso"],
+    ["Elbow_L", "Arm_L"],
+    ["Hand_L", "Elbow_L"],
+    ["Arm_R", "Torso"],
+    ["Elbow_R", "Arm_R"],
+    ["Hand_R", "Elbow_R"],
+    ["Leg_L", "Hips"],
+    ["Knee_L", "Leg_L"],
+    ["Foot_L", "Knee_L"],
+    ["Leg_R", "Hips"],
+    ["Knee_R", "Leg_R"],
+    ["Foot_R", "Knee_R"],
+    ["Head", "Neck"],
+  ];
+  const detached = relationships.filter(([child, parent]) => {
+    const childNode = npcRoot.getObjectByName(child);
+    return !childNode || !childNode.parent || childNode.parent.name !== parent;
+  });
+
+  const validCount = REQUIRED_NODES.length - missing.length;
+  const valid = missing.length === 0 && detached.length === 0;
+  const badge = document.querySelector("#integrityBadge");
+  badge.classList.toggle("is-error", !valid);
+  badge.querySelector(".integrity-icon").textContent = valid ? "✓" : "!";
+  document.querySelector("#integrityText").textContent = valid
+    ? `${validCount} / ${REQUIRED_NODES.length} CONNECTED`
+    : `${missing.length + detached.length} RIG ERRORS`;
+  document.querySelector("#statusMessage").textContent = valid
+    ? "READY / MODEL INTACT"
+    : "CHECK REQUIRED / RIG ERROR";
+  return valid;
+}
+
+function countGeometry() {
+  let triangles = 0;
+  let parts = 0;
+  npcRoot.traverse((node) => {
+    if (!node.isMesh || !node.geometry) {
+      return;
+    }
+    parts += 1;
+    const geometry = node.geometry;
+    triangles += geometry.index
+      ? geometry.index.count / 3
+      : geometry.attributes.position.count / 3;
+  });
+  return { triangles: Math.round(triangles), parts };
+}
+
+function updateReadouts() {
+  const scale = FRAME_SCALE[state.frame];
+  const geometry = npcRoot ? countGeometry() : { triangles: 0, parts: 0 };
+  document.querySelector("#fileNumber").textContent = `#${String(state.seed).padStart(3, "0")}`;
+  document.querySelector("#seedOutput").textContent = state.seed;
+  document.querySelector("#modelRole").textContent = PRESETS[state.preset].label.toUpperCase();
+  document.querySelector("#modelName").textContent = state.name || "UNNAMED PERSONNEL";
+  document.querySelector("#modelMeta").textContent = `${scale.height.toFixed(2)} M / LOW POLY / ${state.clip.toUpperCase()}`;
+  document.querySelector("#triangleCount").textContent = String(geometry.triangles).padStart(4, "0");
+  document.querySelector("#partCount").textContent = String(geometry.parts).padStart(2, "0");
+}
+
+function resetCamera() {
+  camera.position.set(2.15, 1.48, 3.35);
+  controls.target.set(0, 0.95, 0);
+  controls.update();
+}
+
+function selectedClips() {
+  const names = [...document.querySelectorAll(".clip-checks input:checked")].map((input) => input.value);
+  return clips.filter((clip) => names.includes(clip.name));
+}
+
+function exportGlb() {
+  if (!npcRoot || !validateIntegrity()) {
+    showToast("Export stopped: repair the rig integrity errors first.");
+    return;
+  }
+
+  const exportClips = selectedClips();
+  const previousClip = state.clip;
+  const safeName = (state.name || "ucb_npc")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 42) || "ucb_npc";
+
+  document.querySelector("#statusMessage").textContent = "PACKING / ANIMATED GLB";
+  showToast(`Packing model with ${exportClips.length} animation clip${exportClips.length === 1 ? "" : "s"}…`);
+
+  mixer.stopAllAction();
+  restoreRestPose(npcRoot);
+  npcRoot.updateMatrixWorld(true);
+  npcRoot.userData.ucbNpc.includedAnimations = exportClips.map((clip) => clip.name);
+  npcRoot.userData.ucbNpc.limbIntegrity = `${REQUIRED_NODES.length}/${REQUIRED_NODES.length}`;
+
+  const exporter = new GLTFExporter();
+  exporter.parse(
+    npcRoot,
+    (binary) => {
+      const blob = new Blob([binary], { type: "model/gltf-binary" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${safeName}.glb`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      document.querySelector("#statusMessage").textContent = "EXPORTED / MODEL INTACT";
+      showToast(`${safeName}.glb exported — limbs, materials, and ${exportClips.length} clips included.`);
+      playAnimation(previousClip, true);
+    },
+    (error) => {
+      console.error(error);
+      document.querySelector("#statusMessage").textContent = "EXPORT ERROR / TRY AGAIN";
+      showToast("GLB export failed. Reload the tool and try again.");
+      playAnimation(previousClip, true);
+    },
+    {
+      binary: true,
+      animations: exportClips,
+      trs: true,
+      onlyVisible: true,
+      maxTextureSize: 256,
+    },
+  );
+}
+
+function showToast(message) {
+  const toast = document.querySelector("#toast");
+  toast.textContent = message;
+  toast.classList.add("is-visible");
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 3200);
+}
+
+function setButtonGroup(container, value) {
+  container.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.value === value);
+  });
+}
+
+function makeSwatches(container, items, activeIndex, getColor, onSelect) {
+  container.replaceChildren();
+  items.forEach((item, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `swatch${index === activeIndex ? " is-active" : ""}`;
+    button.style.backgroundColor = getColor(item);
+    button.title = item.label;
+    button.setAttribute("aria-label", item.label);
+    button.setAttribute("aria-pressed", String(index === activeIndex));
+    button.addEventListener("click", () => {
+      onSelect(index);
+      [...container.children].forEach((child, childIndex) => {
+        const active = childIndex === index;
+        child.classList.toggle("is-active", active);
+        child.setAttribute("aria-pressed", String(active));
+      });
+      queueRebuild();
+    });
+    container.appendChild(button);
+  });
+}
+
+function syncControls() {
+  document.querySelector("#npcName").value = state.name;
+  document.querySelector("#hairStyle").value = state.hairStyle;
+  document.querySelector("#expression").value = state.expression;
+  document.querySelector("#outfitPreset").value = state.preset;
+  document.querySelector("#topColor").value = state.topColor;
+  document.querySelector("#bottomColor").value = state.bottomColor;
+  document.querySelector("#accentColor").value = state.accentColor;
+  document.querySelector("#showBadge").checked = state.showBadge;
+  document.querySelector("#weathered").checked = state.weathered;
+  document.querySelector("#backpack").checked = state.backpack;
+  document.querySelector("#seed").value = state.seed;
+  document.querySelector("#animationSpeed").value = state.speed;
+  document.querySelector("#speedOutput").textContent = `${state.speed.toFixed(1)}×`;
+  setButtonGroup(document.querySelector("#bodyFrame"), state.frame);
+  setButtonGroup(document.querySelector("#uniformCut"), state.cut);
+  setButtonGroup(document.querySelector("#gearOptions"), state.gear);
+  makeSwatches(
+    document.querySelector("#skinSwatches"),
+    SKIN_TONES,
+    state.skinIndex,
+    (item) => item.base,
+    (index) => { state.skinIndex = index; },
+  );
+  makeSwatches(
+    document.querySelector("#hairSwatches"),
+    HAIR_COLORS,
+    state.hairIndex,
+    (item) => item.color,
+    (index) => { state.hairIndex = index; },
+  );
+}
+
+function wireUi() {
+  document.querySelectorAll(".tab").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("is-active"));
+      document.querySelectorAll(".tab-page").forEach((page) => page.classList.remove("is-active"));
+      button.classList.add("is-active");
+      document.querySelector(`[data-page="${button.dataset.tab}"]`).classList.add("is-active");
+    });
+  });
+
+  document.querySelector("#npcName").addEventListener("input", (event) => {
+    state.name = event.target.value;
+    updateReadouts();
+  });
+
+  document.querySelector("#bodyFrame").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-value]");
+    if (!button) return;
+    state.frame = button.dataset.value;
+    setButtonGroup(event.currentTarget, state.frame);
+    queueRebuild();
+  });
+
+  document.querySelector("#uniformCut").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-value]");
+    if (!button) return;
+    state.cut = button.dataset.value;
+    setButtonGroup(event.currentTarget, state.cut);
+    queueRebuild();
+  });
+
+  document.querySelector("#hairStyle").addEventListener("change", (event) => {
+    state.hairStyle = event.target.value;
+    queueRebuild();
+  });
+
+  document.querySelector("#expression").addEventListener("change", (event) => {
+    state.expression = event.target.value;
+    queueRebuild();
+  });
+
+  document.querySelector("#outfitPreset").addEventListener("change", (event) => {
+    const presetName = event.target.value;
+    const preset = PRESETS[presetName];
+    state.preset = presetName;
+    state.topColor = preset.top;
+    state.bottomColor = preset.bottom;
+    state.accentColor = preset.accent;
+    state.gear = preset.gear;
+    if (presetName === "security") {
+      state.hairStyle = "cap";
+      state.cut = "trousers";
+    }
+    syncControls();
+    queueRebuild();
+  });
+
+  for (const [selector, stateKey] of [
+    ["#topColor", "topColor"],
+    ["#bottomColor", "bottomColor"],
+    ["#accentColor", "accentColor"],
+  ]) {
+    document.querySelector(selector).addEventListener("input", (event) => {
+      state[stateKey] = event.target.value;
+      queueRebuild();
+    });
+  }
+
+  for (const [selector, stateKey] of [
+    ["#showBadge", "showBadge"],
+    ["#weathered", "weathered"],
+    ["#backpack", "backpack"],
+  ]) {
+    document.querySelector(selector).addEventListener("change", (event) => {
+      state[stateKey] = event.target.checked;
+      queueRebuild();
+    });
+  }
+
+  document.querySelector("#gearOptions").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-value]");
+    if (!button) return;
+    state.gear = button.dataset.value;
+    setButtonGroup(event.currentTarget, state.gear);
+    queueRebuild();
+  });
+
+  document.querySelector("#seed").addEventListener("input", (event) => {
+    state.seed = Number(event.target.value);
+    document.querySelector("#seedOutput").textContent = state.seed;
+    document.querySelector("#fileNumber").textContent = `#${String(state.seed).padStart(3, "0")}`;
+    queueRebuild();
+  });
+
+  document.querySelector("#randomizeButton").addEventListener("click", randomize);
+
+  document.querySelectorAll(".animation-card").forEach((button) => {
+    button.addEventListener("click", () => playAnimation(button.dataset.clip));
+  });
+
+  document.querySelector("#animationSpeed").addEventListener("input", (event) => {
+    state.speed = Number(event.target.value);
+    document.querySelector("#speedOutput").textContent = `${state.speed.toFixed(1)}×`;
+    if (currentAction) {
+      currentAction.setEffectiveTimeScale(state.speed);
+    }
+  });
+
+  document.querySelector("#toggleAllClips").addEventListener("click", (event) => {
+    const checkboxes = [...document.querySelectorAll(".clip-checks input")];
+    const hasChecked = checkboxes.some((input) => input.checked);
+    checkboxes.forEach((input) => {
+      input.checked = !hasChecked;
+    });
+    event.currentTarget.textContent = hasChecked ? "Select all" : "Clear all";
+  });
+
+  document.querySelector("#resetCamera").addEventListener("click", resetCamera);
+  document.querySelector("#toggleTurntable").addEventListener("click", (event) => {
+    state.turntable = !state.turntable;
+    event.currentTarget.setAttribute("aria-pressed", String(state.turntable));
+  });
+
+  document.querySelector("#exportButton").addEventListener("click", exportGlb);
+  document.querySelector("#exportButtonSide").addEventListener("click", exportGlb);
+
+  document.addEventListener("keydown", (event) => {
+    if (
+      event.key.toLowerCase() === "g"
+      && !event.ctrlKey
+      && !event.metaKey
+      && !["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)
+    ) {
+      exportGlb();
+    }
+  });
+}
+
+function randomize() {
+  const random = rng(Date.now() % 2147483647);
+  const presetNames = Object.keys(PRESETS);
+  const hairStyles = ["crop", "side", "bob", "ponytail", "cap"];
+  const frames = ["compact", "average", "tall"];
+  const expressions = ["neutral", "tired", "alert"];
+  const cuts = ["trousers", "skirt"];
+  const newPresetName = presetNames[Math.floor(random() * presetNames.length)];
+  const preset = PRESETS[newPresetName];
+
+  state.seed = 1 + Math.floor(random() * 998);
+  state.preset = newPresetName;
+  state.topColor = preset.top;
+  state.bottomColor = preset.bottom;
+  state.accentColor = preset.accent;
+  state.gear = preset.gear;
+  state.skinIndex = Math.floor(random() * SKIN_TONES.length);
+  state.hairIndex = Math.floor(random() * HAIR_COLORS.length);
+  state.hairStyle = hairStyles[Math.floor(random() * hairStyles.length)];
+  state.frame = frames[Math.floor(random() * frames.length)];
+  state.expression = expressions[Math.floor(random() * expressions.length)];
+  state.cut = newPresetName === "security" ? "trousers" : cuts[Math.floor(random() * cuts.length)];
+  state.backpack = random() > 0.62;
+  state.name = `${preset.label} ${String(state.seed).padStart(3, "0")}`;
+
+  syncControls();
+  queueRebuild();
+  showToast("New personnel variation generated.");
+}
+
+function resizeRenderer() {
+  const width = Math.max(1, viewport.clientWidth);
+  const height = Math.max(1, viewport.clientHeight);
+  renderer.setSize(width, height, false);
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+}
+
+const resizeObserver = new ResizeObserver(resizeRenderer);
+resizeObserver.observe(viewport);
+resizeRenderer();
+
+syncControls();
+wireUi();
+rebuildModel();
+
+const clock = new THREE.Clock();
+const motionReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function render() {
+  window.requestAnimationFrame(render);
+  const delta = Math.min(clock.getDelta(), 0.05);
+  if (mixer) {
+    mixer.update(motionReduced ? delta * 0.45 : delta);
+  }
+  if (state.turntable) {
+    modelStage.rotation.y += delta * 0.52;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+render();
+
+window.setInterval(() => {
+  document.querySelector("#clockReadout").textContent = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date());
+}, 1000);
+
+  </script>
+</body>
+</html>

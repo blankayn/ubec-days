@@ -1,0 +1,18 @@
+.godot/
+.tools/
+.runtime/
+*.tmp
+*.log
+_tmp_*
+
+# Derived map artifacts. build_map.py clears the scene and rebuilds the .blend
+# from banilad_osm.json every run, so committing it would store a fresh ~9 MB
+# blob on each map iteration for no recoverable value. The inputs
+# (build_map.py, fetch_osm.py, banilad_osm.json) are tracked instead.
+banilad_map/*.blend
+banilad_map/*.blend1
+# Staging copy of the export; the shipped one lives in assets/maps/.
+banilad_map/export/
+
+# Editor/session scratch
+captures/

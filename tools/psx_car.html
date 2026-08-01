@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PSX Jeepney — Three.js</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #12141a;
+      color: #e8e4dc;
+      overflow: hidden;
+    }
+    #hud {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      max-width: 360px;
+      padding: 14px 16px;
+      background: rgba(10, 12, 16, 0.88);
+      border: 1px solid #3a4048;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    #hud h1 {
+      font-size: 15px;
+      margin-bottom: 6px;
+      color: #7dffb0;
+    }
+    #hud code { color: #e8c56a; }
+    .meta { color: #9aa3ad; font-size: 12px; margin-top: 4px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    button {
+      padding: 8px 12px;
+      background: #1a7a8a;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover { background: #2299ad; }
+    button.secondary { background: #3a4048; }
+    button.secondary:hover { background: #4a5058; }
+    button.active { background: #2a8a4a; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <h1>PSX Jeepney</h1>
+    <p>Low-poly Cuenco Ave jeepney. Flat + nearest textures for Godot. Nose <code>+X</code>.</p>
+    <p class="meta" id="status">Route <code>62</code> · Paint <code>Chariot Green</code></p>
+    <div class="row">
+      <button id="export">Export jeepney.glb</button>
+      <button id="route" class="secondary">Route: 62</button>
+      <button id="recolor" class="secondary">Next color</button>
+      <button id="spin" class="secondary">Toggle spin</button>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
+
+    // ── route codes (replaces 42D) ────────────────────────────────────────
+    const ROUTES = ["62", "13C"];
+
+    // ── paint kits ───────────────────────────────────────────────────────
+    const PAINTS = [
+      {
+        name: "Chariot Green",
+        body: "#2f9e4a",
+        bodyDark: "#1e7a36",
+        bodyLite: "#6fd88a",
+        cabin: "#f4f0e8",
+        cabinShade: "#d8d2c4",
+        cloud: "#ffffff",
+        rack: "#2a5a9e",
+        flameA: "#ff6a1a",
+        flameB: "#ffd23a",
+      },
+      {
+        name: "Sunset Magenta",
+        body: "#c42a6a",
+        bodyDark: "#8a1848",
+        bodyLite: "#f06a9a",
+        cabin: "#fff4f8",
+        cabinShade: "#e8d0d8",
+        cloud: "#ffe8f0",
+        rack: "#3a2a6a",
+        flameA: "#ff9030",
+        flameB: "#ffe060",
+      },
+      {
+        name: "Ocean Blue",
+        body: "#1e6ab0",
+        bodyDark: "#124878",
+        bodyLite: "#5aa8e0",
+        cabin: "#f0f6fc",
+        cabinShade: "#c8d8e8",
+        cloud: "#ffffff",
+        rack: "#1a3a5a",
+        flameA: "#30c8ff",
+        flameB: "#ffe050",
+      },
+      {
+        name: "Gold Rush",
+        body: "#d4a020",
+        bodyDark: "#a07810",
+        bodyLite: "#f0d060",
+        cabin: "#fff8e8",
+        cabinShade: "#e8d8b8",
+        cloud: "#fff4d0",
+        rack: "#2a4a8a",
+        flameA: "#ff4a20",
+        flameB: "#ffd040",
+      },
+      {
+        name: "Violet Night",
+        body: "#5a2a9e",
+        bodyDark: "#3a1870",
+        bodyLite: "#9a6ad8",
+        cabin: "#f4f0ff",
+        cabinShade: "#d0c8e8",
+        cloud: "#ffffff",
+        rack: "#1a2a4a",
+        flameA: "#ff50c0",
+        flameB: "#60e0ff",
+      },
+    ];
+
+    const TRIM = {
+      chrome: 0xc8d0d8,
+      chromeDark: 0x8a949c,
+      rubber: 0x121214,
+      hub: 0xf0d030,
+      glass: 0x1a2834,
+      head: 0xf0e060,
+      fog: 0xe8c840,
+      plate: 0xf4f0e8,
+      checkRed: 0xc42828,
+      checkWhite: 0xf0ece4,
+      fringeRed: 0xb82828,
+      fringeWhite: 0xf0ece8,
+      under: 0x101214,
+      black: 0x0e1012,
+    };
+
+    let routeIndex = 0;
+    let paintIndex = 0;
+    let spin = false;
+    let jeep = null;
+
+    // Materials that need live texture swaps
+    const sideMats = [];
+    const rearCodeMats = [];
+    const roofSignMats = [];
+    const hoodSignMats = [];
+    const bodyMats = [];
+    const cabinMats = [];
+    const rackMats = [];
+
+    function nearest(tex) {
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      tex.generateMipmaps = false;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    function texFromDraw(w, h, draw) {
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
+      draw(ctx, w, h);
+      return nearest(new THREE.CanvasTexture(canvas));
+    }
+
+    function hexToRgb(hex) {
+      const n = parseInt(hex.replace("#", ""), 16);
+      return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+    }
+
+    function rgb(hex) {
+      const { r, g, b } = hexToRgb(hex);
+      return `rgb(${r},${g},${b})`;
+    }
+
+    function grain(ctx, w, h, baseHex, count = 80) {
+      const { r, g, b } = hexToRgb(baseHex);
+      for (let i = 0; i < count; i++) {
+        const n = (Math.random() * 30 - 15) | 0;
+        ctx.fillStyle = `rgb(${clamp(r + n)},${clamp(g + n)},${clamp(b + n)})`;
+        ctx.fillRect((Math.random() * w) | 0, (Math.random() * h) | 0, 1, 1);
+      }
+    }
+
+    function clamp(v) {
+      return Math.max(0, Math.min(255, v | 0));
+    }
+
+    function drawRainbowStripe(ctx, x, y, w, h) {
+      const colors = ["#e02828", "#e88818", "#e8d028", "#28a848", "#2878c8", "#7828b8"];
+      const bw = Math.max(1, (w / colors.length) | 0);
+      colors.forEach((c, i) => {
+        ctx.fillStyle = c;
+        ctx.fillRect(x + i * bw, y, bw, h);
+      });
+    }
+
+    function makeSideTex(paint, route) {
+      return texFromDraw(128, 64, (ctx, w, h) => {
+        // green base
+        ctx.fillStyle = paint.body;
+        ctx.fillRect(0, 0, w, h);
+        grain(ctx, w, h, paint.body, 120);
+
+        // white cabin band mid
+        ctx.fillStyle = paint.cabin;
+        ctx.fillRect(8, 10, 90, 28);
+        grain(ctx, w, h, paint.cabin, 40);
+
+        // cloud / smoke waves
+        ctx.fillStyle = paint.cloud;
+        for (const [cx, cy, rw, rh] of [
+          [18, 22, 22, 10],
+          [40, 18, 28, 12],
+          [68, 24, 24, 10],
+          [95, 36, 20, 14],
+          [110, 20, 16, 12],
+        ]) {
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, rw, rh, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // green overlay swirls
+        ctx.fillStyle = paint.bodyLite;
+        ctx.beginPath();
+        ctx.ellipse(100, 40, 18, 10, -0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = paint.bodyDark;
+        ctx.beginPath();
+        ctx.ellipse(28, 42, 16, 8, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // rainbow accents
+        drawRainbowStripe(ctx, 8, 40, 36, 3);
+        drawRainbowStripe(ctx, 70, 48, 40, 3);
+
+        // flame near rear
+        ctx.fillStyle = paint.flameA;
+        ctx.beginPath();
+        ctx.moveTo(108, 50);
+        ctx.lineTo(120, 30);
+        ctx.lineTo(126, 52);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = paint.flameB;
+        ctx.beginPath();
+        ctx.moveTo(112, 50);
+        ctx.lineTo(120, 36);
+        ctx.lineTo(124, 50);
+        ctx.closePath();
+        ctx.fill();
+
+        // route destination
+        ctx.fillStyle = "#c42828";
+        ctx.font = "bold 6px sans-serif";
+        ctx.fillText("Colon - Carbon - CMall", 12, 22);
+
+        // model badge
+        ctx.fillStyle = "#2a3038";
+        ctx.font = "bold 6px sans-serif";
+        ctx.fillText("CHARIOT Legacy", 14, 34);
+
+        // big route code on rear quarter
+        ctx.fillStyle = "#101214";
+        ctx.font = "bold 16px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(route, 112, 28);
+        ctx.textAlign = "left";
+
+        // checker skirt
+        const cell = 4;
+        for (let x = 0; x < w; x += cell) {
+          for (let y = h - 8; y < h; y += cell) {
+            const on = ((x / cell) + (y / cell)) % 2 === 0;
+            ctx.fillStyle = on ? "#c42828" : "#f0ece4";
+            ctx.fillRect(x, y, cell, cell);
+          }
+        }
+      });
+    }
+
+    function makeRoofSignTex(route) {
+      return texFromDraw(64, 32, (ctx, w, h) => {
+        ctx.fillStyle = "#f4f0e8";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#101214";
+        ctx.fillRect(2, 2, w - 4, h - 4);
+        ctx.fillStyle = "#f4f0e8";
+        ctx.font = `bold ${route.length > 2 ? 14 : 18}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(route, w / 2, h / 2 + 1);
+      });
+    }
+
+    function makeHoodSignTex(paint) {
+      return texFromDraw(64, 32, (ctx, w, h) => {
+        ctx.fillStyle = "#101214";
+        ctx.fillRect(0, 0, w, h);
+        // flame bg
+        ctx.fillStyle = paint.flameA;
+        ctx.beginPath();
+        ctx.moveTo(4, 28);
+        ctx.lineTo(20, 6);
+        ctx.lineTo(28, 28);
+        ctx.fill();
+        ctx.fillStyle = paint.flameB;
+        ctx.beginPath();
+        ctx.moveTo(36, 28);
+        ctx.lineTo(48, 4);
+        ctx.lineTo(58, 28);
+        ctx.fill();
+        ctx.fillStyle = "#4a90e8";
+        ctx.font = "bold 11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("Kenben", w / 2, h / 2);
+        ctx.strokeStyle = "#e8d028";
+        ctx.lineWidth = 1;
+        ctx.strokeText("Kenben", w / 2, h / 2);
+      });
+    }
+
+    function makeBodyPaintTex(paint) {
+      return texFromDraw(32, 32, (ctx, w, h) => {
+        ctx.fillStyle = paint.body;
+        ctx.fillRect(0, 0, w, h);
+        grain(ctx, w, h, paint.body, 70);
+        ctx.fillStyle = paint.bodyDark;
+        ctx.fillRect(0, 20, w, 1);
+        ctx.fillRect(16, 0, 1, h);
+      });
+    }
+
+    function makeCabinTex(paint) {
+      return texFromDraw(32, 32, (ctx, w, h) => {
+        ctx.fillStyle = paint.cabin;
+        ctx.fillRect(0, 0, w, h);
+        grain(ctx, w, h, paint.cabin, 50);
+        ctx.fillStyle = paint.cabinShade;
+        for (let y = 0; y < h; y += 4) ctx.fillRect(0, y, w, 1);
+      });
+    }
+
+    function mat(color, map = null) {
+      return new THREE.MeshLambertMaterial({
+        color,
+        map,
+        flatShading: true,
+      });
+    }
+
+    function addBox(group, center, size, material, name = "") {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
+      mesh.position.copy(center);
+      if (name) mesh.name = name;
+      group.add(mesh);
+      return mesh;
+    }
+
+    function addCyl(group, center, radiusTop, radiusBottom, height, material, rot = null, name = "", segs = 8) {
+      const mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segs),
+        material
+      );
+      mesh.position.copy(center);
+      if (rot) mesh.rotation.set(rot.x, rot.y, rot.z);
+      if (name) mesh.name = name;
+      group.add(mesh);
+      return mesh;
+    }
+
+    function clearMatLists() {
+      sideMats.length = 0;
+      rearCodeMats.length = 0;
+      roofSignMats.length = 0;
+      hoodSignMats.length = 0;
+      bodyMats.length = 0;
+      cabinMats.length = 0;
+      rackMats.length = 0;
+    }
+
+    function buildJeepney(paint, route) {
+      clearMatLists();
+      const root = new THREE.Group();
+      root.name = "Jeepney";
+
+      const bodyMap = makeBodyPaintTex(paint);
+      const cabinMap = makeCabinTex(paint);
+      const sideMap = makeSideTex(paint, route);
+      const roofSignMap = makeRoofSignTex(route);
+      const hoodSignMap = makeHoodSignTex(paint);
+
+      const bodyMat = mat(0xffffff, bodyMap);
+      const cabinMat = mat(0xffffff, cabinMap);
+      const sideMat = mat(0xffffff, sideMap);
+      const roofSignMat = mat(0xffffff, roofSignMap);
+      const hoodSignMat = mat(0xffffff, hoodSignMap);
+      const rackMat = mat(parseInt(paint.rack.slice(1), 16));
+      const chrome = mat(TRIM.chrome);
+      const chromeDark = mat(TRIM.chromeDark);
+      const rubber = mat(TRIM.rubber);
+      const hub = mat(TRIM.hub);
+      const glass = mat(TRIM.glass);
+      const head = mat(TRIM.head);
+      const fog = mat(TRIM.fog);
+      const under = mat(TRIM.under);
+      const black = mat(TRIM.black);
+      const fringeR = mat(TRIM.fringeRed);
+      const fringeW = mat(TRIM.fringeWhite);
+      const seatVinyl = mat(0x2a3a4a);
+      const seatCushion = mat(0x3a4e62);
+      const seatWood = mat(0x6a4a32);
+
+      bodyMats.push(bodyMat);
+      cabinMats.push(cabinMat);
+      sideMats.push(sideMat);
+      roofSignMats.push(roofSignMat);
+      hoodSignMats.push(hoodSignMat);
+      rackMats.push(rackMat);
+
+      // Scale: ~6.2m long jeepney, ground at y=0, nose +X
+      // ── Chassis / underbody ────────────────────────────────────────────
+      const chassis = new THREE.Group();
+      chassis.name = "Chassis";
+      addBox(chassis, new THREE.Vector3(-0.2, 0.32, 0), new THREE.Vector3(5.6, 0.22, 2.05), under, "Frame");
+      addBox(chassis, new THREE.Vector3(2.1, 0.55, 0), new THREE.Vector3(1.4, 0.35, 1.85), under, "EngineBay");
+      root.add(chassis);
+
+      // ── Main body ──────────────────────────────────────────────────────
+      const body = new THREE.Group();
+      body.name = "Body";
+
+      // Passenger cabin — open sides + open rear (boarding)
+      // Floor
+      addBox(body, new THREE.Vector3(-0.55, 0.55, 0), new THREE.Vector3(3.6, 0.18, 2.05), black, "CabinFloor");
+      // Roof plate
+      addBox(body, new THREE.Vector3(-0.55, 1.9, 0), new THREE.Vector3(3.7, 0.12, 2.2), cabinMat, "RoofPlate");
+      // Front of cabin / behind driver only (no rear wall)
+      addBox(body, new THREE.Vector3(1.2, 1.15, 0), new THREE.Vector3(0.14, 1.35, 2.1), cabinMat, "CabinFront");
+      // Thin upper side walls (leave rear open — stop short of back)
+      addBox(body, new THREE.Vector3(-0.35, 1.55, 1.05), new THREE.Vector3(3.0, 0.55, 0.08), cabinMat, "UpperSideL");
+      addBox(body, new THREE.Vector3(-0.35, 1.55, -1.05), new THREE.Vector3(3.0, 0.55, 0.08), cabinMat, "UpperSideR");
+
+      // Side art panels (outer skins with route + graphics)
+      addBox(body, new THREE.Vector3(-0.35, 1.05, 1.1), new THREE.Vector3(3.0, 1.1, 0.06), sideMat, "SideArtL");
+      addBox(body, new THREE.Vector3(-0.35, 1.05, -1.1), new THREE.Vector3(3.0, 1.1, 0.06), sideMat, "SideArtR");
+
+      // Lower green skirts / fenders
+      addBox(body, new THREE.Vector3(-0.4, 0.55, 1.12), new THREE.Vector3(4.4, 0.45, 0.18), bodyMat, "SkirtL");
+      addBox(body, new THREE.Vector3(-0.4, 0.55, -1.12), new THREE.Vector3(4.4, 0.45, 0.18), bodyMat, "SkirtR");
+
+      // Front fenders (rounded jeep look via stepped boxes)
+      addBox(body, new THREE.Vector3(2.35, 0.72, 0.95), new THREE.Vector3(1.5, 0.7, 0.45), bodyMat, "FenderFL");
+      addBox(body, new THREE.Vector3(2.35, 0.72, -0.95), new THREE.Vector3(1.5, 0.7, 0.45), bodyMat, "FenderFR");
+      addBox(body, new THREE.Vector3(2.55, 0.95, 0.95), new THREE.Vector3(1.0, 0.35, 0.42), chrome, "FenderChromeL");
+      addBox(body, new THREE.Vector3(2.55, 0.95, -0.95), new THREE.Vector3(1.0, 0.35, 0.42), chrome, "FenderChromeR");
+
+      // Hood (chrome + paint)
+      addBox(body, new THREE.Vector3(2.15, 1.05, 0), new THREE.Vector3(1.7, 0.28, 1.55), chrome, "HoodChrome");
+      addBox(body, new THREE.Vector3(2.15, 0.88, 0), new THREE.Vector3(1.65, 0.2, 1.45), bodyMat, "HoodBase");
+
+      // Driver cab nose
+      addBox(body, new THREE.Vector3(1.55, 1.45, 0), new THREE.Vector3(0.7, 0.85, 1.7), cabinMat, "DriverCab");
+      addBox(body, new THREE.Vector3(1.85, 1.5, 0), new THREE.Vector3(0.08, 0.65, 1.55), glass, "Windshield");
+
+      // Rear quarter panels (sides only — leave center open for boarding)
+      addBox(body, new THREE.Vector3(-1.95, 1.05, 1.08), new THREE.Vector3(0.55, 1.0, 0.08), sideMat, "RearCodeL");
+      addBox(body, new THREE.Vector3(-1.95, 1.05, -1.08), new THREE.Vector3(0.55, 1.0, 0.08), sideMat, "RearCodeR");
+
+      root.add(body);
+
+      // ── Open side rails / benches hint ──────────────────────────────────
+      const rails = new THREE.Group();
+      rails.name = "Rails";
+      for (const z of [1.02, -1.02]) {
+        addBox(rails, new THREE.Vector3(-0.55, 0.78, z), new THREE.Vector3(3.2, 0.06, 0.06), chromeDark, "SeatRail");
+        addBox(rails, new THREE.Vector3(-0.55, 1.55, z), new THREE.Vector3(3.2, 0.05, 0.05), chromeDark, "HandRail");
+      }
+      // Vertical posts
+      for (const x of [-2.0, -0.9, 0.2, 1.0]) {
+        for (const z of [1.05, -1.05]) {
+          addBox(rails, new THREE.Vector3(x, 1.2, z), new THREE.Vector3(0.06, 1.2, 0.06), chromeDark);
+        }
+      }
+      root.add(rails);
+
+      // ── Passenger benches (jeepney side seats) ─────────────────────────
+      const seats = new THREE.Group();
+      seats.name = "Seats";
+      // Long side-facing benches — left & right, aisle down the middle
+      // Seat pans
+      addBox(seats, new THREE.Vector3(-0.45, 0.78, 0.72), new THREE.Vector3(3.2, 0.12, 0.48), seatCushion, "BenchSeatL");
+      addBox(seats, new THREE.Vector3(-0.45, 0.78, -0.72), new THREE.Vector3(3.2, 0.12, 0.48), seatCushion, "BenchSeatR");
+      // Backrests against cabin walls
+      addBox(seats, new THREE.Vector3(-0.45, 1.15, 0.95), new THREE.Vector3(3.2, 0.7, 0.1), seatVinyl, "BenchBackL");
+      addBox(seats, new THREE.Vector3(-0.45, 1.15, -0.95), new THREE.Vector3(3.2, 0.7, 0.1), seatVinyl, "BenchBackR");
+      // Wooden under-seat bases
+      addBox(seats, new THREE.Vector3(-0.45, 0.62, 0.72), new THREE.Vector3(3.15, 0.2, 0.42), seatWood, "BenchBaseL");
+      addBox(seats, new THREE.Vector3(-0.45, 0.62, -0.72), new THREE.Vector3(3.15, 0.2, 0.42), seatWood, "BenchBaseR");
+      // Seat dividers / passenger slots (~8 per side)
+      for (let i = 0; i < 8; i++) {
+        const x = -1.85 + i * 0.4;
+        addBox(seats, new THREE.Vector3(x, 0.92, 0.72), new THREE.Vector3(0.04, 0.18, 0.46), seatVinyl);
+        addBox(seats, new THREE.Vector3(x, 0.92, -0.72), new THREE.Vector3(0.04, 0.18, 0.46), seatVinyl);
+      }
+      // Front-facing rear-ish jump tips near cabin front (optional short bench ends)
+      addBox(seats, new THREE.Vector3(0.95, 0.78, 0), new THREE.Vector3(0.35, 0.12, 0.9), seatCushion, "FrontJump");
+      // Driver seat (cab)
+      addBox(seats, new THREE.Vector3(1.45, 0.85, 0.35), new THREE.Vector3(0.45, 0.14, 0.4), seatCushion, "DriverSeat");
+      addBox(seats, new THREE.Vector3(1.3, 1.15, 0.35), new THREE.Vector3(0.12, 0.5, 0.4), seatVinyl, "DriverBack");
+      root.add(seats);
+
+      // ── Fringe under cabin edge ─────────────────────────────────────────
+      const fringe = new THREE.Group();
+      fringe.name = "Fringe";
+      for (let i = 0; i < 18; i++) {
+        const x = -2.15 + i * 0.2;
+        const m = i % 2 === 0 ? fringeR : fringeW;
+        addBox(fringe, new THREE.Vector3(x, 0.42, 1.15), new THREE.Vector3(0.14, 0.28, 0.04), m);
+        addBox(fringe, new THREE.Vector3(x, 0.42, -1.15), new THREE.Vector3(0.14, 0.28, 0.04), m);
+      }
+      root.add(fringe);
+
+      // ── Bullbar / grille / lights ──────────────────────────────────────
+      const front = new THREE.Group();
+      front.name = "FrontGuard";
+      // Vertical grille
+      addBox(front, new THREE.Vector3(3.05, 0.95, 0), new THREE.Vector3(0.12, 0.85, 1.35), chrome, "GrilleFrame");
+      for (let i = -3; i <= 3; i++) {
+        addBox(front, new THREE.Vector3(3.08, 0.95, i * 0.16), new THREE.Vector3(0.06, 0.72, 0.05), chromeDark);
+      }
+      // Rainbow center bars
+      const rainbowColors = [0xe02828, 0xe88818, 0xe8d028, 0x28a848, 0x2878c8, 0x7828b8];
+      rainbowColors.forEach((c, i) => {
+        addBox(front, new THREE.Vector3(3.1, 0.7 + i * 0.08, 0), new THREE.Vector3(0.05, 0.06, 0.55), mat(c));
+      });
+
+      // Layered bumper bars
+      addBox(front, new THREE.Vector3(3.2, 0.42, 0), new THREE.Vector3(0.25, 0.18, 1.9), chrome, "BumperLow");
+      addBox(front, new THREE.Vector3(3.15, 0.62, 0), new THREE.Vector3(0.2, 0.12, 1.75), chrome, "BumperMid");
+      // Rainbow bumper stripe
+      rainbowColors.forEach((c, i) => {
+        addBox(front, new THREE.Vector3(3.28, 0.42, -0.75 + i * 0.3), new THREE.Vector3(0.08, 0.1, 0.22), mat(c));
+      });
+
+      // Main round headlights
+      addCyl(front, new THREE.Vector3(2.95, 1.05, 0.55), 0.22, 0.22, 0.14, head, new THREE.Vector3(0, 0, Math.PI / 2), "HeadL", 10);
+      addCyl(front, new THREE.Vector3(2.95, 1.05, -0.55), 0.22, 0.22, 0.14, head, new THREE.Vector3(0, 0, Math.PI / 2), "HeadR", 10);
+      addCyl(front, new THREE.Vector3(2.95, 1.05, 0.55), 0.12, 0.12, 0.16, fog, new THREE.Vector3(0, 0, Math.PI / 2), "HeadInnerL", 8);
+      addCyl(front, new THREE.Vector3(2.95, 1.05, -0.55), 0.12, 0.12, 0.16, fog, new THREE.Vector3(0, 0, Math.PI / 2), "HeadInnerR", 8);
+
+      // Fog lights on bullbar
+      for (const z of [-0.7, -0.35, 0.35, 0.7]) {
+        addCyl(front, new THREE.Vector3(3.25, 0.78, z), 0.09, 0.09, 0.1, fog, new THREE.Vector3(0, 0, Math.PI / 2), "", 8);
+      }
+
+      // Hood-top lamps
+      addCyl(front, new THREE.Vector3(2.35, 1.28, 0.35), 0.12, 0.12, 0.1, head, new THREE.Vector3(0, 0, Math.PI / 2), "HoodLampL", 8);
+      addCyl(front, new THREE.Vector3(2.35, 1.28, -0.35), 0.12, 0.12, 0.1, head, new THREE.Vector3(0, 0, Math.PI / 2), "HoodLampR", 8);
+
+      // Hood name sign (Kenben)
+      addBox(front, new THREE.Vector3(2.0, 1.45, 0), new THREE.Vector3(0.08, 0.45, 0.85), hoodSignMat, "HoodSign");
+
+      // Side mirrors
+      addBox(front, new THREE.Vector3(1.7, 1.55, 1.05), new THREE.Vector3(0.22, 0.18, 0.12), chrome, "MirrorL");
+      addBox(front, new THREE.Vector3(1.7, 1.55, -1.05), new THREE.Vector3(0.22, 0.18, 0.12), chrome, "MirrorR");
+
+      root.add(front);
+
+      // ── Roof rack + route sign + spare ─────────────────────────────────
+      const roof = new THREE.Group();
+      roof.name = "RoofRack";
+      // Blue tubular rack frame
+      addBox(roof, new THREE.Vector3(-0.55, 2.15, 0.95), new THREE.Vector3(3.5, 0.06, 0.06), rackMat, "RackRailL");
+      addBox(roof, new THREE.Vector3(-0.55, 2.15, -0.95), new THREE.Vector3(3.5, 0.06, 0.06), rackMat, "RackRailR");
+      addBox(roof, new THREE.Vector3(-0.55, 2.35, 0.95), new THREE.Vector3(3.5, 0.06, 0.06), rackMat);
+      addBox(roof, new THREE.Vector3(-0.55, 2.35, -0.95), new THREE.Vector3(3.5, 0.06, 0.06), rackMat);
+      for (const x of [-2.1, -0.9, 0.3, 1.1]) {
+        addBox(roof, new THREE.Vector3(x, 2.25, 0), new THREE.Vector3(0.05, 0.28, 1.95), rackMat);
+        addBox(roof, new THREE.Vector3(x, 2.15, 0.95), new THREE.Vector3(0.05, 0.28, 0.05), rackMat);
+        addBox(roof, new THREE.Vector3(x, 2.15, -0.95), new THREE.Vector3(0.05, 0.28, 0.05), rackMat);
+      }
+      // Cross bars
+      for (let i = 0; i < 5; i++) {
+        addBox(roof, new THREE.Vector3(-1.9 + i * 0.7, 2.35, 0), new THREE.Vector3(0.05, 0.05, 1.9), rackMat);
+      }
+
+      // Route code sign on roof (was 42D → 62 / 13C)
+      addBox(roof, new THREE.Vector3(-0.2, 2.55, 0), new THREE.Vector3(0.08, 0.35, 0.7), roofSignMat, "RouteSign");
+
+      // Spare tire in rack
+      addCyl(roof, new THREE.Vector3(-1.6, 2.35, 0), 0.38, 0.38, 0.18, rubber, new THREE.Vector3(0, 0, Math.PI / 2), "SpareTire", 10);
+      addCyl(roof, new THREE.Vector3(-1.6, 2.35, 0), 0.2, 0.2, 0.2, hub, new THREE.Vector3(0, 0, Math.PI / 2), "SpareHub", 8);
+
+      // Small roof marker lights
+      for (const z of [-0.7, -0.35, 0, 0.35, 0.7]) {
+        addBox(roof, new THREE.Vector3(1.2, 2.05, z), new THREE.Vector3(0.12, 0.08, 0.12), fog);
+      }
+
+      root.add(roof);
+
+      // ── Rear ───────────────────────────────────────────────────────────
+      const rear = new THREE.Group();
+      rear.name = "Rear";
+      addBox(rear, new THREE.Vector3(-2.45, 0.7, 0), new THREE.Vector3(0.2, 0.5, 1.9), chrome, "RearBumper");
+      addBox(rear, new THREE.Vector3(-2.42, 1.35, 0.7), new THREE.Vector3(0.1, 0.28, 0.35), mat(0xb02828), "TailL");
+      addBox(rear, new THREE.Vector3(-2.42, 1.35, -0.7), new THREE.Vector3(0.1, 0.28, 0.35), mat(0xb02828), "TailR");
+      addBox(rear, new THREE.Vector3(-2.42, 0.55, 0), new THREE.Vector3(0.06, 0.18, 0.5), mat(TRIM.plate), "Plate");
+      // Open rear entry
+      addBox(rear, new THREE.Vector3(-2.35, 0.95, 0.55), new THREE.Vector3(0.06, 0.9, 0.08), chromeDark, "RearPostL");
+      addBox(rear, new THREE.Vector3(-2.35, 0.95, -0.55), new THREE.Vector3(0.06, 0.9, 0.08), chromeDark, "RearPostR");
+      root.add(rear);
+
+      // ── Wheels (yellow hubcaps) ────────────────────────────────────────
+      const wheels = new THREE.Group();
+      wheels.name = "Wheels";
+      const wheelPos = [
+        [1.85, 0.48, 1.15],
+        [1.85, 0.48, -1.15],
+        [-1.55, 0.48, 1.15],
+        [-1.55, 0.48, -1.15],
+      ];
+      wheelPos.forEach(([x, y, z], i) => {
+        const w = new THREE.Group();
+        w.name = `Wheel_${i}`;
+        addCyl(w, new THREE.Vector3(0, 0, 0), 0.48, 0.48, 0.32, rubber, new THREE.Vector3(Math.PI / 2, 0, 0), "Tire", 10);
+        addCyl(w, new THREE.Vector3(0, 0, 0), 0.3, 0.3, 0.34, hub, new THREE.Vector3(Math.PI / 2, 0, 0), "Hubcap", 10);
+        // Hub holes pattern
+        for (let a = 0; a < 6; a++) {
+          const ang = (a / 6) * Math.PI * 2;
+          const hx = Math.cos(ang) * 0.16;
+          const hy = Math.sin(ang) * 0.16;
+          addCyl(
+            w,
+            new THREE.Vector3(hx, hy, z > 0 ? 0.02 : -0.02),
+            0.04,
+            0.04,
+            0.36,
+            black,
+            new THREE.Vector3(Math.PI / 2, 0, 0),
+            "",
+            6
+          );
+        }
+        addCyl(
+          w,
+          new THREE.Vector3(0, 0, z > 0 ? 0.03 : -0.03),
+          0.08,
+          0.08,
+          0.36,
+          chrome,
+          new THREE.Vector3(Math.PI / 2, 0, 0),
+          "Center",
+          8
+        );
+        w.position.set(x, y, z);
+        wheels.add(w);
+      });
+      root.add(wheels);
+
+      return root;
+    }
+
+    function updateStatus() {
+      const paint = PAINTS[paintIndex];
+      const route = ROUTES[routeIndex];
+      document.getElementById("status").innerHTML =
+        `Route <code>${route}</code> · Paint <code>${paint.name}</code>`;
+      document.getElementById("route").textContent = `Route: ${route}`;
+      document.querySelector("#hud h1").textContent = `PSX Jeepney — ${paint.name}`;
+    }
+
+    function applyRouteAndPaint() {
+      const paint = PAINTS[paintIndex];
+      const route = ROUTES[routeIndex];
+
+      const bodyMap = makeBodyPaintTex(paint);
+      const cabinMap = makeCabinTex(paint);
+      const sideMap = makeSideTex(paint, route);
+      const roofSignMap = makeRoofSignTex(route);
+      const hoodSignMap = makeHoodSignTex(paint);
+      const rackColor = parseInt(paint.rack.slice(1), 16);
+
+      const swap = (list, map) => {
+        for (const m of list) {
+          if (m.map) m.map.dispose();
+          m.map = map;
+          m.needsUpdate = true;
+        }
+      };
+
+      swap(bodyMats, bodyMap);
+      swap(cabinMats, cabinMap);
+      swap(sideMats, sideMap);
+      swap(roofSignMats, roofSignMap);
+      swap(hoodSignMats, hoodSignMap);
+
+      for (const m of rackMats) {
+        m.color.setHex(rackColor);
+        m.needsUpdate = true;
+      }
+
+      updateStatus();
+    }
+
+    // ── Scene ────────────────────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x2a3038);
+
+    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+    camera.position.set(7.5, 4.2, 6.8);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setPixelRatio(1);
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 1.1, 0);
+    controls.update();
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.58));
+    const key = new THREE.DirectionalLight(0xfff4e8, 1.0);
+    key.position.set(5, 10, 6);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xa8c0e0, 0.4);
+    fill.position.set(-5, 4, -4);
+    scene.add(fill);
+
+    jeep = buildJeepney(PAINTS[paintIndex], ROUTES[routeIndex]);
+    scene.add(jeep);
+    updateStatus();
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(18, 18),
+      new THREE.MeshLambertMaterial({ color: 0x3a3e42 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    const road = new THREE.Mesh(
+      new THREE.PlaneGeometry(16, 4),
+      new THREE.MeshLambertMaterial({ color: 0x17191b })
+    );
+    road.rotation.x = -Math.PI / 2;
+    road.position.y = 0.01;
+    scene.add(road);
+
+    const grid = new THREE.GridHelper(18, 36, 0x4a5058, 0x3a4048);
+    scene.add(grid);
+
+    document.getElementById("export").addEventListener("click", () => {
+      const exporter = new GLTFExporter();
+      const route = ROUTES[routeIndex];
+      exporter.parse(
+        jeep,
+        (gltf) => {
+          const blob = new Blob([gltf], { type: "model/gltf-binary" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `jeepney_${route.toLowerCase()}.glb`;
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+        (err) => console.error(err),
+        { binary: true }
+      );
+    });
+
+    document.getElementById("route").addEventListener("click", () => {
+      routeIndex = (routeIndex + 1) % ROUTES.length;
+      applyRouteAndPaint();
+    });
+
+    document.getElementById("recolor").addEventListener("click", () => {
+      paintIndex = (paintIndex + 1) % PAINTS.length;
+      applyRouteAndPaint();
+    });
+
+    document.getElementById("spin").addEventListener("click", () => {
+      spin = !spin;
+    });
+
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (spin && jeep) jeep.rotation.y += 0.008;
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/cblock_edward_npc.gd" id="1_script"]
+
+[sub_resource type="CapsuleShape3D" id="Capsule_edward"]
+radius = 0.34
+height = 1.8
+
+[node name="EdwardNPC" type="CharacterBody3D"]
+collision_layer = 4
+collision_mask = 1
+script = ExtResource("1_script")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("Capsule_edward")
+
+[node name="ModelRoot" type="Node3D" parent="."]
+rotation = Vector3(0, 3.14159265, 0)
+
+[node name="Nameplate" type="Label3D" parent="."]
+position = Vector3(0, 2.15, 0)
+pixel_size = 0.006
+font_size = 42
+outline_size = 8
+text = "EDWARD"
+billboard = 1
+no_depth_test = false

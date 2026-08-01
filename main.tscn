@@ -1,0 +1,216 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/world.gd" id="1_world"]
+[ext_resource type="Script" path="res://scripts/player.gd" id="2_player"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="3_hud"]
+[ext_resource type="Script" path="res://scripts/player_character_visual.gd" id="4_player_visual"]
+
+[sub_resource type="Environment" id="Environment_night"]
+background_mode = 1
+background_color = Color(0.55, 0.72, 0.88, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.78, 0.82, 0.86, 1)
+ambient_light_energy = 0.62
+reflected_light_source = 2
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.75, 0.82, 0.9, 1)
+fog_light_energy = 0.45
+fog_density = 0.004
+fog_height = 3.0
+fog_height_density = 0.04
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape_player"]
+radius = 0.38
+height = 1.8
+
+[node name="CuencaAve" type="Node3D"]
+script = ExtResource("1_world")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_night")
+
+[node name="Moon" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -20, 0)
+light_color = Color(1, 0.94, 0.82, 1)
+light_energy = 1.3
+shadow_enabled = false
+
+[node name="Player" type="CharacterBody3D" parent="."]
+position = Vector3(12, 0.95, 20)
+rotation_degrees = Vector3(0, 180, 0)
+script = ExtResource("2_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
+shape = SubResource("CapsuleShape_player")
+
+[node name="ModelPivot" type="Node3D" parent="Player"]
+
+[node name="CharacterVisual" type="Node3D" parent="Player/ModelPivot"]
+visible = false
+script = ExtResource("4_player_visual")
+
+[node name="Head" type="Node3D" parent="Player"]
+position = Vector3(0, 0.65, 0)
+
+[node name="Camera3D" type="Camera3D" parent="Player/Head"]
+current = true
+fov = 70.0
+near = 0.08
+far = 180.0
+
+[node name="InteractionRay" type="RayCast3D" parent="Player/Head/Camera3D"]
+target_position = Vector3(0, 0, -4.8)
+enabled = true
+collide_with_areas = true
+
+[node name="FlashlightPivot" type="Node3D" parent="Player/Head/Camera3D"]
+
+[node name="Flashlight" type="SpotLight3D" parent="Player/Head/Camera3D/FlashlightPivot"]
+visible = false
+light_color = Color(1, 0.894118, 0.709804, 1)
+light_energy = 3.2
+shadow_enabled = false
+spot_range = 12.0
+spot_angle = 28.0
+spot_angle_attenuation = 1.4
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 10
+script = ExtResource("3_hud")
+
+[node name="Root" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="FlashRect" type="ColorRect" parent="HUD/Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0)
+
+[node name="ObjectivePanel" type="ColorRect" parent="HUD/Root"]
+layout_mode = 0
+offset_left = 22.0
+offset_top = 20.0
+offset_right = 520.0
+offset_bottom = 132.0
+mouse_filter = 2
+color = Color(0.025, 0.035, 0.039, 0.88)
+
+[node name="Objective" type="Label" parent="HUD/Root/ObjectivePanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 14.0
+offset_top = 10.0
+offset_right = -12.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.82, 0.9, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0.015, 0.02, 0.02, 1)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 22
+autowrap_mode = 3
+text = "CH 1  DAY ERRANDS  00 / 02
+NEXT: Locker · GF · School front (exterior, left of gate)"
+
+[node name="Crosshair" type="Label" parent="HUD/Root"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -10.0
+offset_top = -17.0
+offset_right = 10.0
+offset_bottom = 17.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.76, 0.77, 0.68, 0.72)
+theme_override_font_sizes/font_size = 20
+text = "+"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Prompt" type="Label" parent="HUD/Root"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -420.0
+offset_top = -248.0
+offset_right = 420.0
+offset_bottom = -196.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.98, 0.92, 0.62, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.02, 0.02, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 28
+text = "[E] INTERACT"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="MessagePanel" type="ColorRect" parent="HUD/Root"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -560.0
+offset_top = -188.0
+offset_right = 560.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+color = Color(0.02, 0.024, 0.025, 0.9)
+
+[node name="Message" type="Label" parent="HUD/Root/MessagePanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 12.0
+offset_right = -20.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.96, 0.95, 0.88, 1)
+theme_override_colors/font_outline_color = Color(0.015, 0.015, 0.015, 1)
+theme_override_constants/outline_size = 7
+theme_override_font_sizes/font_size = 32
+text = "14:20 // UC BANILAD — DAY ERRAND"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="Controls" type="Label" parent="HUD/Root"]
+layout_mode = 0
+offset_left = 22.0
+offset_top = 102.0
+offset_right = 245.0
+offset_bottom = 175.0
+theme_override_colors/font_color = Color(0.58, 0.61, 0.57, 0.86)
+theme_override_colors/font_outline_color = Color(0.02, 0.02, 0.02, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 14
+text = "WASD  MOVE    SHIFT  RUN\nSPACE  JUMP    E  INTERACT    TAB  PHONE\nF  FLASHLIGHT    ESC  RELEASE MOUSE"

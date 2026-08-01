@@ -1,0 +1,1542 @@
+[
+  {
+    "name": "Alicia Residences",
+    "godot_position": [
+      -14.94,
+      0.0,
+      -699.55
+    ],
+    "roof_height": 18.85,
+    "footprint": [
+      43.3,
+      46.9
+    ],
+    "key": true
+  },
+  {
+    "name": "Ayala Malls Central Bloc",
+    "godot_position": [
+      -461.86,
+      0.0,
+      419.09
+    ],
+    "roof_height": 74.2,
+    "footprint": [
+      195.1,
+      184.2
+    ],
+    "key": true
+  },
+  {
+    "name": "Calyx Centre",
+    "godot_position": [
+      -665.76,
+      0.0,
+      645.05
+    ],
+    "roof_height": 84.4,
+    "footprint": [
+      70.5,
+      78.9
+    ],
+    "key": true
+  },
+  {
+    "name": "Cebu Exchange",
+    "godot_position": [
+      -743.21,
+      0.0,
+      819.06
+    ],
+    "roof_height": 14.85,
+    "footprint": [
+      105.4,
+      124.8
+    ],
+    "key": true
+  },
+  {
+    "name": "Filinvest Cyberzone Cebu Tower 3 & 4",
+    "godot_position": [
+      -740.74,
+      0.0,
+      628.44
+    ],
+    "roof_height": 66.2,
+    "footprint": [
+      97.5,
+      135.0
+    ],
+    "key": true
+  },
+  {
+    "name": "Gaisano Country Mall",
+    "godot_position": [
+      -87.35,
+      0.0,
+      -519.4
+    ],
+    "roof_height": 16.4,
+    "footprint": [
+      182.8,
+      193.4
+    ],
+    "key": true
+  },
+  {
+    "name": "Globe Telecom Tower",
+    "godot_position": [
+      -370.53,
+      0.0,
+      518.97
+    ],
+    "roof_height": 38.2,
+    "footprint": [
+      45.4,
+      50.7
+    ],
+    "key": true
+  },
+  {
+    "name": "HM Tower",
+    "godot_position": [
+      -608.2,
+      0.0,
+      543.62
+    ],
+    "roof_height": 44.2,
+    "footprint": [
+      84.4,
+      104.5
+    ],
+    "key": true
+  },
+  {
+    "name": "Mabuhay Tower",
+    "godot_position": [
+      -562.61,
+      0.0,
+      693.26
+    ],
+    "roof_height": 49.2,
+    "footprint": [
+      49.2,
+      47.1
+    ],
+    "key": true
+  },
+  {
+    "name": "Park Centrale Tower",
+    "godot_position": [
+      -514.08,
+      0.0,
+      612.53
+    ],
+    "roof_height": 71.2,
+    "footprint": [
+      45.7,
+      42.6
+    ],
+    "key": true
+  },
+  {
+    "name": "Petron",
+    "godot_position": [
+      -2.68,
+      0.0,
+      -338.69
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      20.4,
+      17.5
+    ],
+    "key": true
+  },
+  {
+    "name": "Skyrise 3",
+    "godot_position": [
+      -495.04,
+      0.0,
+      581.12
+    ],
+    "roof_height": 44.2,
+    "footprint": [
+      55.6,
+      58.9
+    ],
+    "key": true
+  },
+  {
+    "name": "Skyrise 4",
+    "godot_position": [
+      -572.52,
+      0.0,
+      485.46
+    ],
+    "roof_height": 59.2,
+    "footprint": [
+      52.7,
+      52.5
+    ],
+    "key": true
+  },
+  {
+    "name": "TGU Tower",
+    "godot_position": [
+      -592.3,
+      0.0,
+      742.91
+    ],
+    "roof_height": 44.2,
+    "footprint": [
+      75.8,
+      91.6
+    ],
+    "key": true
+  },
+  {
+    "name": "The Link",
+    "godot_position": [
+      -541.28,
+      0.0,
+      814.66
+    ],
+    "roof_height": 58.0,
+    "footprint": [
+      57.7,
+      52.1
+    ],
+    "key": true
+  },
+  {
+    "name": "The Walk",
+    "godot_position": [
+      -622.11,
+      0.0,
+      672.89
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      61.1,
+      65.6
+    ],
+    "key": true
+  },
+  {
+    "name": "University of Cebu - Banilad Campus",
+    "godot_position": [
+      51.11,
+      0.0,
+      -449.14
+    ],
+    "roof_height": 41.1,
+    "footprint": [
+      72.3,
+      75.7
+    ],
+    "key": true
+  },
+  {
+    "name": "eBloc 2 Tower",
+    "godot_position": [
+      -654.74,
+      0.0,
+      420.79
+    ],
+    "roof_height": 44.2,
+    "footprint": [
+      99.5,
+      67.9
+    ],
+    "key": true
+  },
+  {
+    "name": "eBloc 3 Tower",
+    "godot_position": [
+      -743.87,
+      0.0,
+      380.07
+    ],
+    "roof_height": 38.2,
+    "footprint": [
+      81.8,
+      63.8
+    ],
+    "key": true
+  },
+  {
+    "name": "38 Park Avenue",
+    "godot_position": [
+      -348.83,
+      0.0,
+      279.84
+    ],
+    "roof_height": 124.2,
+    "footprint": [
+      61.3,
+      50.7
+    ],
+    "key": false
+  },
+  {
+    "name": "7-Eleven",
+    "godot_position": [
+      -461.14,
+      0.0,
+      52.56
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      28.2,
+      28.0
+    ],
+    "key": false
+  },
+  {
+    "name": "88th Avenue",
+    "godot_position": [
+      -151.54,
+      0.0,
+      763.83
+    ],
+    "roof_height": 42.3,
+    "footprint": [
+      41.3,
+      50.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Aboitiz Corporate Center",
+    "godot_position": [
+      -87.99,
+      0.0,
+      318.66
+    ],
+    "roof_height": 7.85,
+    "footprint": [
+      82.0,
+      45.4
+    ],
+    "key": false
+  },
+  {
+    "name": "Aboitiz Corporate Center.001",
+    "godot_position": [
+      -69.26,
+      0.0,
+      290.57
+    ],
+    "roof_height": 20.85,
+    "footprint": [
+      60.3,
+      29.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Aegis",
+    "godot_position": [
+      -485.25,
+      0.0,
+      264.86
+    ],
+    "roof_height": 42.2,
+    "footprint": [
+      91.3,
+      72.0
+    ],
+    "key": false
+  },
+  {
+    "name": "Alba Uno Hotel",
+    "godot_position": [
+      -452.18,
+      0.0,
+      150.68
+    ],
+    "roof_height": 22.85,
+    "footprint": [
+      27.1,
+      27.2
+    ],
+    "key": false
+  },
+  {
+    "name": "AllPrime",
+    "godot_position": [
+      -926.67,
+      0.0,
+      607.76
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      38.0,
+      48.1
+    ],
+    "key": false
+  },
+  {
+    "name": "Apas Barangay Hall",
+    "godot_position": [
+      -729.36,
+      0.0,
+      -301.76
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      29.9,
+      28.9
+    ],
+    "key": false
+  },
+  {
+    "name": "Apas Fire Sub Station",
+    "godot_position": [
+      -711.21,
+      0.0,
+      -290.32
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      24.1,
+      22.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Apas Sports Covered Court",
+    "godot_position": [
+      -752.88,
+      0.0,
+      -319.09
+    ],
+    "roof_height": 5.9,
+    "footprint": [
+      40.5,
+      36.7
+    ],
+    "key": false
+  },
+  {
+    "name": "Asta Premier Residences",
+    "godot_position": [
+      -465.3,
+      0.0,
+      669.28
+    ],
+    "roof_height": 18.85,
+    "footprint": [
+      42.4,
+      38.9
+    ],
+    "key": false
+  },
+  {
+    "name": "Avenir",
+    "godot_position": [
+      -555.13,
+      0.0,
+      1028.28
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      71.0,
+      49.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Avida Towers Cebu",
+    "godot_position": [
+      -594.62,
+      0.0,
+      195.56
+    ],
+    "roof_height": 11.75,
+    "footprint": [
+      145.9,
+      93.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Av\u00edda Towers Riala",
+    "godot_position": [
+      -330.6,
+      0.0,
+      161.01
+    ],
+    "roof_height": 15.05,
+    "footprint": [
+      171.3,
+      183.0
+    ],
+    "key": false
+  },
+  {
+    "name": "Boarding House",
+    "godot_position": [
+      292.93,
+      0.0,
+      46.04
+    ],
+    "roof_height": 6.9,
+    "footprint": [
+      26.1,
+      29.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Bureau of Internal Revenue",
+    "godot_position": [
+      -504.31,
+      0.0,
+      1168.74
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      61.6,
+      52.5
+    ],
+    "key": false
+  },
+  {
+    "name": "CJRS",
+    "godot_position": [
+      -351.12,
+      0.0,
+      346.2
+    ],
+    "roof_height": 11.75,
+    "footprint": [
+      36.3,
+      38.2
+    ],
+    "key": false
+  },
+  {
+    "name": "Cebu Country Club",
+    "godot_position": [
+      -52.97,
+      0.0,
+      402.67
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      61.5,
+      86.5
+    ],
+    "key": false
+  },
+  {
+    "name": "Cebu Exchange.001",
+    "godot_position": [
+      -744.11,
+      0.0,
+      816.61
+    ],
+    "roof_height": 42.2,
+    "footprint": [
+      94.5,
+      117.7
+    ],
+    "key": false
+  },
+  {
+    "name": "Citi Park Annex",
+    "godot_position": [
+      648.11,
+      0.0,
+      966.48
+    ],
+    "roof_height": 49.9,
+    "footprint": [
+      45.2,
+      26.6
+    ],
+    "key": false
+  },
+  {
+    "name": "Citi Park Hotel",
+    "godot_position": [
+      610.08,
+      0.0,
+      969.63
+    ],
+    "roof_height": 38.4,
+    "footprint": [
+      40.8,
+      31.5
+    ],
+    "key": false
+  },
+  {
+    "name": "Comodo Rooms and Workspaces",
+    "godot_position": [
+      -632.54,
+      0.0,
+      -685.1
+    ],
+    "roof_height": 18.85,
+    "footprint": [
+      20.0,
+      22.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Crown 7 Center",
+    "godot_position": [
+      -282.95,
+      0.0,
+      1135.82
+    ],
+    "roof_height": 34.6,
+    "footprint": [
+      51.2,
+      59.9
+    ],
+    "key": false
+  },
+  {
+    "name": "Department of Science and Technology",
+    "godot_position": [
+      -350.8,
+      0.0,
+      726.38
+    ],
+    "roof_height": 14.85,
+    "footprint": [
+      28.9,
+      32.9
+    ],
+    "key": false
+  },
+  {
+    "name": "Dona Carmen Building",
+    "godot_position": [
+      -92.02,
+      0.0,
+      156.29
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      23.6,
+      38.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Eastland Hotel & Residences",
+    "godot_position": [
+      134.76,
+      0.0,
+      1127.44
+    ],
+    "roof_height": 18.85,
+    "footprint": [
+      47.1,
+      47.6
+    ],
+    "key": false
+  },
+  {
+    "name": "Europe",
+    "godot_position": [
+      -244.11,
+      0.0,
+      617.47
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      34.9,
+      44.2
+    ],
+    "key": false
+  },
+  {
+    "name": "Faustina Center",
+    "godot_position": [
+      733.14,
+      0.0,
+      790.8
+    ],
+    "roof_height": 53.7,
+    "footprint": [
+      74.8,
+      70.9
+    ],
+    "key": false
+  },
+  {
+    "name": "Filinvest Cyberzone Cebu Tower 1",
+    "godot_position": [
+      -657.88,
+      0.0,
+      489.3
+    ],
+    "roof_height": 44.8,
+    "footprint": [
+      63.3,
+      75.6
+    ],
+    "key": false
+  },
+  {
+    "name": "Filinvest Cyberzone Cebu Tower 2",
+    "godot_position": [
+      -690.26,
+      0.0,
+      542.32
+    ],
+    "roof_height": 66.2,
+    "footprint": [
+      53.5,
+      58.1
+    ],
+    "key": false
+  },
+  {
+    "name": "Fooda",
+    "godot_position": [
+      657.85,
+      0.0,
+      1025.24
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      84.6,
+      93.9
+    ],
+    "key": false
+  },
+  {
+    "name": "Galaxy Motors",
+    "godot_position": [
+      701.78,
+      0.0,
+      947.07
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      37.2,
+      22.4
+    ],
+    "key": false
+  },
+  {
+    "name": "Grand Residences",
+    "godot_position": [
+      -73.18,
+      0.0,
+      874.87
+    ],
+    "roof_height": 7.85,
+    "footprint": [
+      63.2,
+      48.0
+    ],
+    "key": false
+  },
+  {
+    "name": "Hotel George",
+    "godot_position": [
+      -376.7,
+      0.0,
+      999.36
+    ],
+    "roof_height": 22.85,
+    "footprint": [
+      29.2,
+      22.2
+    ],
+    "key": false
+  },
+  {
+    "name": "I-Kuan Tao, Sian Tian Temple",
+    "godot_position": [
+      -103.13,
+      0.0,
+      240.54
+    ],
+    "roof_height": 10.4,
+    "footprint": [
+      26.9,
+      28.2
+    ],
+    "key": false
+  },
+  {
+    "name": "Jollibee",
+    "godot_position": [
+      797.7,
+      0.0,
+      1017.49
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      28.6,
+      29.9
+    ],
+    "key": false
+  },
+  {
+    "name": "Julie's",
+    "godot_position": [
+      -117.26,
+      0.0,
+      130.33
+    ],
+    "roof_height": 7.33,
+    "footprint": [
+      6.3,
+      9.8
+    ],
+    "key": false
+  },
+  {
+    "name": "Kasambagan Barangay Hall",
+    "godot_position": [
+      -82.29,
+      0.0,
+      1114.88
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      30.8,
+      31.6
+    ],
+    "key": false
+  },
+  {
+    "name": "Kyo Residences",
+    "godot_position": [
+      840.44,
+      0.0,
+      736.35
+    ],
+    "roof_height": 33.2,
+    "footprint": [
+      46.2,
+      39.2
+    ],
+    "key": false
+  },
+  {
+    "name": "La Guardia Flats 1",
+    "godot_position": [
+      -776.41,
+      0.0,
+      322.3
+    ],
+    "roof_height": 41.2,
+    "footprint": [
+      37.5,
+      44.9
+    ],
+    "key": false
+  },
+  {
+    "name": "La Guardia Flats 2",
+    "godot_position": [
+      -835.31,
+      0.0,
+      599.94
+    ],
+    "roof_height": 51.2,
+    "footprint": [
+      34.1,
+      47.7
+    ],
+    "key": false
+  },
+  {
+    "name": "Live Cafe Mac",
+    "godot_position": [
+      655.18,
+      0.0,
+      865.83
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      25.8,
+      26.2
+    ],
+    "key": false
+  },
+  {
+    "name": "MLD Building",
+    "godot_position": [
+      -188.94,
+      0.0,
+      523.62
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      42.1,
+      31.2
+    ],
+    "key": false
+  },
+  {
+    "name": "Main Building",
+    "godot_position": [
+      386.03,
+      0.0,
+      -428.72
+    ],
+    "roof_height": 14.85,
+    "footprint": [
+      53.9,
+      73.0
+    ],
+    "key": false
+  },
+  {
+    "name": "Main Hotel Suite",
+    "godot_position": [
+      27.67,
+      0.0,
+      -125.82
+    ],
+    "roof_height": 22.85,
+    "footprint": [
+      22.8,
+      28.5
+    ],
+    "key": false
+  },
+  {
+    "name": "Mandaue Foam",
+    "godot_position": [
+      -93.57,
+      0.0,
+      204.0
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      38.5,
+      38.5
+    ],
+    "key": false
+  },
+  {
+    "name": "Metro Sports",
+    "godot_position": [
+      -858.94,
+      0.0,
+      643.2
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      39.0,
+      49.0
+    ],
+    "key": false
+  },
+  {
+    "name": "Metro Sports Centre",
+    "godot_position": [
+      -901.79,
+      0.0,
+      775.46
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      86.2,
+      70.5
+    ],
+    "key": false
+  },
+  {
+    "name": "National Food Authority",
+    "godot_position": [
+      -329.51,
+      0.0,
+      689.65
+    ],
+    "roof_height": 14.85,
+    "footprint": [
+      36.2,
+      44.1
+    ],
+    "key": false
+  },
+  {
+    "name": "National Irrigation Administration",
+    "godot_position": [
+      -374.05,
+      0.0,
+      791.84
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      40.2,
+      42.4
+    ],
+    "key": false
+  },
+  {
+    "name": "Perpetual Help",
+    "godot_position": [
+      -133.62,
+      0.0,
+      -392.96
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      14.4,
+      14.1
+    ],
+    "key": false
+  },
+  {
+    "name": "Petron.001",
+    "godot_position": [
+      -445.92,
+      0.0,
+      992.57
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      12.9,
+      12.7
+    ],
+    "key": false
+  },
+  {
+    "name": "Phoenix",
+    "godot_position": [
+      -39.95,
+      0.0,
+      -137.44
+    ],
+    "roof_height": 5.9,
+    "footprint": [
+      22.5,
+      41.4
+    ],
+    "key": false
+  },
+  {
+    "name": "Population Commission",
+    "godot_position": [
+      -138.74,
+      0.0,
+      186.59
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      18.4,
+      20.4
+    ],
+    "key": false
+  },
+  {
+    "name": "RC Motorental Cebu",
+    "godot_position": [
+      -124.45,
+      0.0,
+      142.84
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      14.6,
+      20.0
+    ],
+    "key": false
+  },
+  {
+    "name": "Rainforest Park Cebu",
+    "godot_position": [
+      588.22,
+      0.0,
+      866.0
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      36.9,
+      33.9
+    ],
+    "key": false
+  },
+  {
+    "name": "Royal Garden Residences",
+    "godot_position": [
+      320.43,
+      0.0,
+      1156.67
+    ],
+    "roof_height": 49.9,
+    "footprint": [
+      36.6,
+      26.3
+    ],
+    "key": false
+  },
+  {
+    "name": "SAS Residences",
+    "godot_position": [
+      156.48,
+      0.0,
+      1057.49
+    ],
+    "roof_height": 18.85,
+    "footprint": [
+      36.6,
+      36.9
+    ],
+    "key": false
+  },
+  {
+    "name": "Salvador",
+    "godot_position": [
+      -95.99,
+      0.0,
+      5.13
+    ],
+    "roof_height": 7.57,
+    "footprint": [
+      7.2,
+      9.2
+    ],
+    "key": false
+  },
+  {
+    "name": "Santo Ni\u00f1o Chapel",
+    "godot_position": [
+      -152.23,
+      0.0,
+      -386.68
+    ],
+    "roof_height": 8.25,
+    "footprint": [
+      11.4,
+      11.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Savors of Siam",
+    "godot_position": [
+      -116.6,
+      0.0,
+      86.52
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      18.8,
+      16.1
+    ],
+    "key": false
+  },
+  {
+    "name": "Shakey's",
+    "godot_position": [
+      537.66,
+      0.0,
+      951.46
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      29.8,
+      30.0
+    ],
+    "key": false
+  },
+  {
+    "name": "Shell",
+    "godot_position": [
+      493.15,
+      0.0,
+      1061.0
+    ],
+    "roof_height": 5.9,
+    "footprint": [
+      19.2,
+      19.6
+    ],
+    "key": false
+  },
+  {
+    "name": "Shell.001",
+    "godot_position": [
+      -165.51,
+      0.0,
+      490.22
+    ],
+    "roof_height": 5.9,
+    "footprint": [
+      31.2,
+      18.4
+    ],
+    "key": false
+  },
+  {
+    "name": "Skyrise 1",
+    "godot_position": [
+      -393.45,
+      0.0,
+      320.6
+    ],
+    "roof_height": 25.85,
+    "footprint": [
+      79.7,
+      64.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Skyrise 1.001",
+    "godot_position": [
+      -393.45,
+      0.0,
+      320.6
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      79.7,
+      64.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Skyrise 2",
+    "godot_position": [
+      -436.78,
+      0.0,
+      294.43
+    ],
+    "roof_height": 38.2,
+    "footprint": [
+      39.0,
+      39.8
+    ],
+    "key": false
+  },
+  {
+    "name": "Skyrise 3B",
+    "godot_position": [
+      -473.44,
+      0.0,
+      545.41
+    ],
+    "roof_height": 72.2,
+    "footprint": [
+      50.8,
+      51.0
+    ],
+    "key": false
+  },
+  {
+    "name": "Strand Tower",
+    "godot_position": [
+      579.04,
+      0.0,
+      976.16
+    ],
+    "roof_height": 14.85,
+    "footprint": [
+      23.9,
+      20.4
+    ],
+    "key": false
+  },
+  {
+    "name": "TESDA Provincial Office - Cebu",
+    "godot_position": [
+      -595.93,
+      0.0,
+      871.48
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      42.9,
+      45.4
+    ],
+    "key": false
+  },
+  {
+    "name": "TSC Residential Suites",
+    "godot_position": [
+      126.67,
+      0.0,
+      1101.17
+    ],
+    "roof_height": 21.65,
+    "footprint": [
+      37.2,
+      36.5
+    ],
+    "key": false
+  },
+  {
+    "name": "Tancor 3 Residential Suites",
+    "godot_position": [
+      -125.16,
+      0.0,
+      802.9
+    ],
+    "roof_height": 18.85,
+    "footprint": [
+      62.2,
+      48.1
+    ],
+    "key": false
+  },
+  {
+    "name": "The Burger Joint",
+    "godot_position": [
+      -226.49,
+      0.0,
+      1151.06
+    ],
+    "roof_height": 10.99,
+    "footprint": [
+      13.0,
+      11.6
+    ],
+    "key": false
+  },
+  {
+    "name": "The City Flats",
+    "godot_position": [
+      -140.79,
+      0.0,
+      -4.61
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      38.3,
+      65.6
+    ],
+    "key": false
+  },
+  {
+    "name": "The Gallery",
+    "godot_position": [
+      -234.77,
+      0.0,
+      1140.78
+    ],
+    "roof_height": 8.45,
+    "footprint": [
+      91.0,
+      75.0
+    ],
+    "key": false
+  },
+  {
+    "name": "The Greenery",
+    "godot_position": [
+      -311.45,
+      0.0,
+      1073.78
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      48.9,
+      45.4
+    ],
+    "key": false
+  },
+  {
+    "name": "The Meridian",
+    "godot_position": [
+      -156.83,
+      0.0,
+      1168.81
+    ],
+    "roof_height": 14.55,
+    "footprint": [
+      54.9,
+      49.9
+    ],
+    "key": false
+  },
+  {
+    "name": "The Pyramid",
+    "godot_position": [
+      -703.48,
+      0.0,
+      335.19
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      29.2,
+      29.5
+    ],
+    "key": false
+  },
+  {
+    "name": "The Sentinel",
+    "godot_position": [
+      -285.9,
+      0.0,
+      758.49
+    ],
+    "roof_height": 52.2,
+    "footprint": [
+      48.7,
+      41.0
+    ],
+    "key": false
+  },
+  {
+    "name": "Urban Deca Homes Banilad",
+    "godot_position": [
+      768.84,
+      0.0,
+      -552.51
+    ],
+    "roof_height": 6.85,
+    "footprint": [
+      77.8,
+      64.1
+    ],
+    "key": false
+  },
+  {
+    "name": "WJV Inn Hotel",
+    "godot_position": [
+      -875.73,
+      0.0,
+      630.7
+    ],
+    "roof_height": 20.85,
+    "footprint": [
+      34.7,
+      41.5
+    ],
+    "key": false
+  },
+  {
+    "name": "Waterfront Cebu City Hotel & Casino",
+    "godot_position": [
+      -754.84,
+      0.0,
+      1075.26
+    ],
+    "roof_height": 8.45,
+    "footprint": [
+      147.1,
+      286.3
+    ],
+    "key": false
+  },
+  {
+    "name": "Waterfront Cebu City Hotel & Casino.001",
+    "godot_position": [
+      -720.36,
+      0.0,
+      986.13
+    ],
+    "roof_height": 21.65,
+    "footprint": [
+      78.1,
+      108.1
+    ],
+    "key": false
+  },
+  {
+    "name": "Yakski Barbeque",
+    "godot_position": [
+      -649.2,
+      0.0,
+      358.28
+    ],
+    "roof_height": 8.4,
+    "footprint": [
+      38.1,
+      34.7
+    ],
+    "key": false
+  },
+  {
+    "name": "Zerenity Hotel & Suites",
+    "godot_position": [
+      -475.81,
+      0.0,
+      126.71
+    ],
+    "roof_height": 22.85,
+    "footprint": [
+      21.6,
+      22.6
+    ],
+    "key": false
+  },
+  {
+    "name": "eBloc 1 Tower",
+    "godot_position": [
+      -250.14,
+      0.0,
+      277.68
+    ],
+    "roof_height": 34.9,
+    "footprint": [
+      65.3,
+      100.5
+    ],
+    "key": false
+  },
+  {
+    "name": "eBloc 4 Tower",
+    "godot_position": [
+      -208.47,
+      0.0,
+      182.14
+    ],
+    "roof_height": 34.9,
+    "footprint": [
+      60.2,
+      81.0
+    ],
+    "key": false
+  },
+  {
+    "name": "i1",
+    "godot_position": [
+      -442.28,
+      0.0,
+      630.9
+    ],
+    "roof_height": 31.6,
+    "footprint": [
+      64.2,
+      74.2
+    ],
+    "key": false
+  },
+  {
+    "name": "i2",
+    "godot_position": [
+      -522.37,
+      0.0,
+      769.75
+    ],
+    "roof_height": 44.8,
+    "footprint": [
+      64.8,
+      75.0
+    ],
+    "key": false
+  },
+  {
+    "name": "i3",
+    "godot_position": [
+      -494.16,
+      0.0,
+      728.82
+    ],
+    "roof_height": 44.8,
+    "footprint": [
+      53.5,
+      50.4
+    ],
+    "key": false
+  }
+]

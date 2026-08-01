@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PSX Engineering Guy — Three.js</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #12141a;
+      color: #e8e4dc;
+      overflow: hidden;
+    }
+    #hud {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      max-width: 340px;
+      padding: 14px 16px;
+      background: rgba(10, 12, 16, 0.88);
+      border: 1px solid #3a4048;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    #hud h1 {
+      font-size: 15px;
+      margin-bottom: 6px;
+      color: #e8c56a;
+    }
+    #hud code { color: #9ec8ff; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    button {
+      padding: 8px 12px;
+      background: #1a7a8a;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover { background: #2299ad; }
+    button.secondary { background: #3a4048; }
+    button.secondary:hover { background: #4a5058; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <h1>PSX Engineering Guy</h1>
+    <p>Low-poly student with mustard polo, ENGINEERING lanyard, jeans, and soda can. Flat shaded + nearest textures for Godot import.</p>
+    <div class="row">
+      <button id="export">Export .glb</button>
+      <button id="spin" class="secondary">Toggle spin</button>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
+
+    // ── palette (from reference) ──────────────────────────────────────────
+    const C = {
+      skin: 0xc9a07a,
+      skinShade: 0xb08868,
+      hair: 0x1a1410,
+      shirt: 0xd4a84a,
+      shirtDark: 0xb8903a,
+      jeans: 0x8aa0b8,
+      jeansDark: 0x6e849c,
+      shoe: 0x1c1c1e,
+      lanyard: 0xd45a18,
+      badge: 0xf0ece4,
+      canRed: 0xc42828,
+      canBlack: 0x141414,
+      canTop: 0xb8b8b8,
+    };
+
+    // ── tiny canvas textures (PSX crunch) ─────────────────────────────────
+    function nearest(tex) {
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      tex.generateMipmaps = false;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    function texFromDraw(w, h, draw) {
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
+      draw(ctx, w, h);
+      return nearest(new THREE.CanvasTexture(canvas));
+    }
+
+    function makeShirtTex() {
+      return texFromDraw(32, 32, (ctx, w, h) => {
+        ctx.fillStyle = "#d4a84a";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#b8903a";
+        for (let x = 0; x < w; x += 3) {
+          ctx.fillRect(x, 0, 1, h);
+        }
+        // subtle noise
+        for (let i = 0; i < 80; i++) {
+          ctx.fillStyle = Math.random() > 0.5 ? "#c49a40" : "#e0b858";
+          ctx.fillRect((Math.random() * w) | 0, (Math.random() * h) | 0, 1, 1);
+        }
+      });
+    }
+
+    function makeJeansTex() {
+      return texFromDraw(32, 32, (ctx, w, h) => {
+        ctx.fillStyle = "#8aa0b8";
+        ctx.fillRect(0, 0, w, h);
+        for (let i = 0; i < 140; i++) {
+          const shade = 110 + ((Math.random() * 50) | 0);
+          ctx.fillStyle = `rgb(${shade * 0.55 | 0},${shade * 0.65 | 0},${shade})`;
+          ctx.fillRect((Math.random() * w) | 0, (Math.random() * h) | 0, 1, 1);
+        }
+        ctx.fillStyle = "#6e849c";
+        for (let y = 0; y < h; y += 4) ctx.fillRect(0, y, w, 1);
+      });
+    }
+
+    function makeFaceTex() {
+      return texFromDraw(64, 64, (ctx, w, h) => {
+        // skin base
+        ctx.fillStyle = "#c9a07a";
+        ctx.fillRect(0, 0, w, h);
+
+        // cheek shade
+        ctx.fillStyle = "#b08868";
+        ctx.fillRect(4, 30, 12, 14);
+        ctx.fillRect(48, 30, 12, 14);
+
+        // forehead highlight
+        ctx.fillStyle = "#d4b090";
+        ctx.fillRect(18, 8, 28, 10);
+
+        // brows
+        ctx.fillStyle = "#2a2018";
+        ctx.fillRect(14, 22, 12, 3);
+        ctx.fillRect(38, 22, 12, 3);
+
+        // eyes white
+        ctx.fillStyle = "#f0ece8";
+        ctx.fillRect(16, 26, 10, 7);
+        ctx.fillRect(38, 26, 10, 7);
+
+        // iris / pupil
+        ctx.fillStyle = "#3a2a1c";
+        ctx.fillRect(19, 28, 4, 4);
+        ctx.fillRect(41, 28, 4, 4);
+        ctx.fillStyle = "#111";
+        ctx.fillRect(20, 29, 2, 2);
+        ctx.fillRect(42, 29, 2, 2);
+
+        // nose bridge
+        ctx.fillStyle = "#b88868";
+        ctx.fillRect(30, 30, 4, 10);
+        ctx.fillStyle = "#a87858";
+        ctx.fillRect(29, 38, 6, 3);
+
+        // mouth
+        ctx.fillStyle = "#8a5a4a";
+        ctx.fillRect(26, 46, 12, 3);
+        ctx.fillStyle = "#a07060";
+        ctx.fillRect(28, 45, 8, 1);
+
+        // chin shade
+        ctx.fillStyle = "#b08868";
+        ctx.fillRect(22, 52, 20, 8);
+      });
+    }
+
+    function makeLanyardTex() {
+      return texFromDraw(64, 16, (ctx, w, h) => {
+        ctx.fillStyle = "#d45a18";
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = "#f0ece4";
+        ctx.font = "bold 10px monospace";
+        ctx.textBaseline = "middle";
+        ctx.fillText("ENGINEERING", 4, h / 2 + 1);
+        // pixel noise
+        for (let i = 0; i < 30; i++) {
+          ctx.fillStyle = "#c04810";
+          ctx.fillRect((Math.random() * w) | 0, (Math.random() * h) | 0, 1, 1);
+        }
+      });
+    }
+
+    function makeHairTex() {
+      return texFromDraw(16, 16, (ctx, w, h) => {
+        ctx.fillStyle = "#1a1410";
+        ctx.fillRect(0, 0, w, h);
+        for (let i = 0; i < 40; i++) {
+          ctx.fillStyle = Math.random() > 0.5 ? "#0e0a08" : "#2a2218";
+          ctx.fillRect((Math.random() * w) | 0, (Math.random() * h) | 0, 1, 1);
+        }
+      });
+    }
+
+    function mat(color, map = null) {
+      const m = new THREE.MeshLambertMaterial({
+        color,
+        map,
+        flatShading: true,
+      });
+      return m;
+    }
+
+    // ── mesh helpers ──────────────────────────────────────────────────────
+    function box(parent, size, pos, material, rot = null) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material);
+      mesh.position.set(...pos);
+      if (rot) mesh.rotation.set(...rot);
+      parent.add(mesh);
+      return mesh;
+    }
+
+    function taper(parent, rTop, rBot, height, pos, material, segs = 6) {
+      const geo = new THREE.CylinderGeometry(rTop, rBot, height, segs, 1, false);
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.position.set(...pos);
+      parent.add(mesh);
+      return mesh;
+    }
+
+    function lowSphere(parent, r, pos, material, w = 6, h = 4) {
+      const geo = new THREE.SphereGeometry(r, w, h);
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.position.set(...pos);
+      parent.add(mesh);
+      return mesh;
+    }
+
+    // ── character builder ─────────────────────────────────────────────────
+    function buildEngineeringGuy() {
+      const root = new THREE.Group();
+      root.name = "EngineeringGuy";
+
+      const shirtMap = makeShirtTex();
+      const jeansMap = makeJeansTex();
+      const faceMap = makeFaceTex();
+      const lanyardMap = makeLanyardTex();
+      const hairMap = makeHairTex();
+
+      const mSkin = mat(C.skin);
+      const mSkinShade = mat(C.skinShade);
+      const mHair = mat(0xffffff, hairMap);
+      const mShirt = mat(0xffffff, shirtMap);
+      const mShirtDark = mat(C.shirtDark);
+      const mJeans = mat(0xffffff, jeansMap);
+      const mJeansDark = mat(C.jeansDark);
+      const mShoe = mat(C.shoe);
+      const mLanyard = mat(0xffffff, lanyardMap);
+      const mBadge = mat(C.badge);
+      const mCanRed = mat(C.canRed);
+      const mCanBlack = mat(C.canBlack);
+      const mCanTop = mat(C.canTop);
+
+      // ── legs / jeans ────────────────────────────────────────────────────
+      const pelvis = box(root, [0.34, 0.22, 0.22], [0, 0.92, 0.01], mJeans);
+      pelvis.name = "Pelvis";
+
+      const thighL = taper(root, 0.09, 0.08, 0.38, [-0.11, 0.70, 0.015], mJeans, 6);
+      thighL.name = "ThighL";
+      const thighR = taper(root, 0.09, 0.08, 0.38, [0.11, 0.70, 0.015], mJeansDark, 6);
+      thighR.name = "ThighR";
+
+      const shinL = taper(root, 0.075, 0.06, 0.40, [-0.11, 0.32, 0.02], mJeans, 6);
+      shinL.name = "ShinL";
+      const shinR = taper(root, 0.075, 0.06, 0.40, [0.11, 0.32, 0.02], mJeansDark, 6);
+      shinR.name = "ShinR";
+
+      // shoes
+      box(root, [0.12, 0.07, 0.24], [-0.11, 0.055, -0.03], mShoe).name = "ShoeL";
+      box(root, [0.12, 0.07, 0.24], [0.11, 0.055, -0.03], mShoe).name = "ShoeR";
+
+      // ── torso / polo ────────────────────────────────────────────────────
+      const torso = box(root, [0.42, 0.52, 0.26], [0, 1.28, 0], mShirt);
+      torso.name = "Torso";
+      // collar
+      box(root, [0.22, 0.06, 0.18], [0, 1.55, 0.04], mShirtDark).name = "Collar";
+      // ── arms (joint hierarchy so limbs stay connected) ──────────────────
+      // Left shoulder → sleeve → forearm → hand
+      const shoulderL = new THREE.Group();
+      shoulderL.name = "ShoulderL";
+      shoulderL.position.set(-0.22, 1.44, 0);
+      shoulderL.rotation.z = 0.22; // hang slightly out
+      root.add(shoulderL);
+
+      const sleeveL = box(shoulderL, [0.15, 0.17, 0.17], [-0.02, -0.04, 0], mShirt);
+      sleeveL.name = "SleeveL";
+
+      const forearmL = taper(shoulderL, 0.052, 0.042, 0.34, [-0.02, -0.28, 0.01], mSkin, 5);
+      forearmL.name = "ArmL";
+
+      const handL = lowSphere(shoulderL, 0.052, [-0.02, -0.48, 0.02], mSkin, 5, 4);
+      handL.name = "HandL";
+
+      // Right shoulder → sleeve → forearm → hand → can (at side like reference)
+      const shoulderR = new THREE.Group();
+      shoulderR.name = "ShoulderR";
+      shoulderR.position.set(0.22, 1.44, 0);
+      shoulderR.rotation.z = -0.18;
+      shoulderR.rotation.x = -0.12; // slight forward
+      root.add(shoulderR);
+
+      const sleeveR = box(shoulderR, [0.15, 0.17, 0.17], [0.02, -0.04, 0], mShirtDark);
+      sleeveR.name = "SleeveR";
+
+      const forearmR = taper(shoulderR, 0.052, 0.042, 0.34, [0.02, -0.28, 0.02], mSkinShade, 5);
+      forearmR.name = "ArmR";
+
+      const handR = lowSphere(shoulderR, 0.052, [0.02, -0.48, 0.04], mSkinShade, 5, 4);
+      handR.name = "HandR";
+
+      // soda can gripped in right hand
+      const can = new THREE.Group();
+      can.name = "SodaCan";
+      can.position.set(0.02, -0.56, 0.06);
+      shoulderR.add(can);
+      taper(can, 0.035, 0.035, 0.12, [0, 0, 0], mCanRed, 6).name = "CanBody";
+      box(can, [0.072, 0.04, 0.072], [0, 0.01, 0], mCanBlack).name = "CanBand";
+      taper(can, 0.028, 0.035, 0.02, [0, 0.07, 0], mCanTop, 6).name = "CanTop";
+
+      // ── neck / head ─────────────────────────────────────────────────────
+      taper(root, 0.06, 0.07, 0.10, [0, 1.60, 0], mSkin, 5).name = "Neck";
+
+      const head = new THREE.Group();
+      head.name = "Head";
+      head.position.set(0, 1.78, 0);
+      root.add(head);
+
+      // chunky low-poly head
+      const skull = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.32, 0.26),
+        mSkin
+      );
+      skull.name = "Skull";
+      head.add(skull);
+
+      // jaw taper
+      box(head, [0.22, 0.10, 0.18], [0, -0.16, 0.02], mSkinShade).name = "Jaw";
+
+      // ears
+      box(head, [0.04, 0.08, 0.05], [-0.15, 0.0, 0], mSkin).name = "EarL";
+      box(head, [0.04, 0.08, 0.05], [0.15, 0.0, 0], mSkin).name = "EarR";
+
+      // face texture quad (PSX face plane)
+      const faceGeo = new THREE.PlaneGeometry(0.26, 0.30);
+      const faceMat = new THREE.MeshLambertMaterial({
+        map: faceMap,
+        flatShading: true,
+      });
+      const face = new THREE.Mesh(faceGeo, faceMat);
+      face.name = "Face";
+      face.position.set(0, 0.02, 0.132);
+      head.add(face);
+
+      // hair cap
+      const hair = new THREE.Mesh(
+        new THREE.BoxGeometry(0.30, 0.14, 0.28),
+        mHair
+      );
+      hair.name = "HairCap";
+      hair.position.set(0, 0.14, -0.01);
+      head.add(hair);
+      // bangs / front fringe
+      box(head, [0.28, 0.08, 0.08], [0, 0.10, 0.12], mHair).name = "Bangs";
+      // side hair
+      box(head, [0.06, 0.16, 0.18], [-0.14, 0.04, -0.02], mHair).name = "HairL";
+      box(head, [0.06, 0.16, 0.18], [0.14, 0.04, -0.02], mHair).name = "HairR";
+      // back hair
+      box(head, [0.26, 0.18, 0.08], [0, 0.04, -0.12], mHair).name = "HairBack";
+
+      // ── ENGINEERING lanyard + badge ──────────────────────────────────────
+      const lanyard = new THREE.Group();
+      lanyard.name = "Lanyard";
+      root.add(lanyard);
+
+      // strap loops around neck, hangs on chest
+      const strapL = box(lanyard, [0.04, 0.42, 0.02], [-0.08, 1.38, 0.14], mLanyard, [0.15, 0, 0.2]);
+      strapL.name = "StrapL";
+      const strapR = box(lanyard, [0.04, 0.42, 0.02], [0.08, 1.38, 0.14], mLanyard, [0.15, 0, -0.2]);
+      strapR.name = "StrapR";
+      // printed band across chest
+      const band = box(lanyard, [0.22, 0.05, 0.02], [0, 1.22, 0.15], mLanyard);
+      band.name = "LanyardBand";
+
+      // ID badge
+      const badge = box(lanyard, [0.10, 0.14, 0.015], [0, 1.10, 0.16], mBadge);
+      badge.name = "Badge";
+      // photo stub on badge
+      box(lanyard, [0.06, 0.06, 0.01], [0, 1.13, 0.17], mat(0x6a8098)).name = "BadgePhoto";
+      box(lanyard, [0.07, 0.02, 0.01], [0, 1.06, 0.17], mat(0xd45a18)).name = "BadgeStripe";
+
+      // mark all meshes for export
+      root.traverse((obj) => {
+        if (obj.isMesh) {
+          obj.castShadow = true;
+          obj.receiveShadow = true;
+        }
+      });
+
+      return root;
+    }
+
+    // ── scene ─────────────────────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a2230);
+    scene.fog = new THREE.Fog(0x1a2230, 6, 14);
+
+    const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 50);
+    camera.position.set(1.6, 1.4, 2.4);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setPixelRatio(1); // crunchy PSX
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 1.0, 0);
+    controls.enableDamping = true;
+    controls.update();
+
+    scene.add(new THREE.AmbientLight(0xffe8c8, 0.55));
+    const key = new THREE.DirectionalLight(0xfff0d0, 1.1);
+    key.position.set(2.5, 4, 2);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0x6080a0, 0.35);
+    fill.position.set(-2, 2, -1);
+    scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffc060, 0.4);
+    rim.position.set(0, 2, -3);
+    scene.add(rim);
+
+    // ground
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(8, 8),
+      new THREE.MeshLambertMaterial({ color: 0x2a3038, flatShading: true })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+    scene.add(new THREE.GridHelper(8, 16, 0x4a5058, 0x2e343c));
+
+    // soft night backdrop blocks (optional flavor)
+    const bgMat = new THREE.MeshLambertMaterial({ color: 0x243040, flatShading: true });
+    for (const [x, z, w, h, d] of [
+      [-3.5, -4, 1.2, 2.2, 1],
+      [-2.2, -4.5, 0.9, 1.6, 0.8],
+      [3.2, -4, 1.4, 2.8, 1],
+    ]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bgMat);
+      b.position.set(x, h * 0.5, z);
+      scene.add(b);
+    }
+    // glowing tree blob
+    const tree = new THREE.Mesh(
+      new THREE.SphereGeometry(0.7, 5, 4),
+      new THREE.MeshLambertMaterial({ color: 0xe8c040, flatShading: true })
+    );
+    tree.position.set(-2.8, 1.3, -3.2);
+    scene.add(tree);
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.12, 1.0, 5),
+      new THREE.MeshLambertMaterial({ color: 0x4a3020, flatShading: true })
+    );
+    trunk.position.set(-2.8, 0.5, -3.2);
+    scene.add(trunk);
+
+    const guy = buildEngineeringGuy();
+    scene.add(guy);
+
+    let spinning = true;
+    document.getElementById("spin").addEventListener("click", () => {
+      spinning = !spinning;
+    });
+
+    document.getElementById("export").addEventListener("click", () => {
+      const exporter = new GLTFExporter();
+      exporter.parse(
+        guy,
+        (gltf) => {
+          const blob = new Blob([gltf], { type: "model/gltf-binary" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "psx_engineering_guy.glb";
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+        (err) => console.error(err),
+        { binary: true }
+      );
+    });
+
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (spinning) guy.rotation.y += 0.008;
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>

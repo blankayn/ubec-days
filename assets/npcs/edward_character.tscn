@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3 uid="uid://c8edwardoffice01"]
+
+[ext_resource type="PackedScene" uid="uid://b72xas302vflm" path="res://assets/npcs/edward.glb" id="1_edward_glb"]
+[ext_resource type="Script" path="res://scripts/edward_character_root.gd" id="2_root"]
+
+[node name="Edward" type="Node3D"]
+script = ExtResource("2_root")
+
+[node name="OfficeWorkerModel" parent="." instance=ExtResource("1_edward_glb")]

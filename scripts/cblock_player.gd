@@ -4,6 +4,7 @@ extends CharacterBody3D
 ## independent from body turning.
 
 signal status_message(text: String)
+signal prompt_changed(text: String)
 
 const CharacterRoster := preload("res://scripts/cblock_character_roster.gd")
 const GUSION_SCENE := preload(
@@ -41,6 +42,13 @@ const TARGET_HEIGHT_METERS := 1.78
 const LOCOMOTION_CROSSFADE := 0.18
 const ATTACK_CROSSFADE := 0.08
 
+# How far in front of the body an Interactable can be picked up. The probe
+# starts at the camera, which orbits well behind the player, so the camera's
+# own distance is added on top of this at query time.
+const INTERACT_RANGE := 3.0
+# Interactables are plain StaticBody3D on the world layer.
+const INTERACT_MASK := 1
+
 # Core Mixamo bone names required by the locomotion clips.
 const REQUIRED_CORE_BONES := [
 	"Hips",
@@ -74,6 +82,8 @@ const REQUIRED_CORE_BONES := [
 
 @export_category("GTA Camera")
 @export var mouse_sensitivity := 0.0022
+## Right-stick orbit rate, in radians per second.
+@export var pad_look_speed := 2.6
 @export var camera_target_height := 0.64
 @export var camera_recenter_delay := 0.75
 @export var camera_recenter_speed := 2.25
@@ -108,6 +118,8 @@ var _punch_left_next := true
 var _character_id := CharacterRoster.DEFAULT_ID
 var _character_label := "Character"
 var _controls_enabled := true
+var _last_prompt := ""
+var _interact_key_label := "E"
 
 
 func _ready() -> void:
@@ -123,6 +135,7 @@ func _ready() -> void:
 	_camera_pitch = clampf(spring_arm.rotation.x, minimum_pitch, maximum_pitch)
 	_update_camera_transform()
 	_bone_suffix_regex.compile("_\\d+$")
+	_interact_key_label = _action_key_label(&"interact", "E")
 	CharacterRoster.load_saved()
 	_build_selected_rig()
 
@@ -143,28 +156,31 @@ func _unhandled_input(event: InputEvent) -> void:
 		)
 		_time_since_manual_look = 0.0
 		_update_camera_transform()
-	elif event is InputEventKey and event.pressed and not event.echo:
-		match event.keycode:
-			KEY_ESCAPE:
-				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-			KEY_SPACE:
-				if is_on_floor():
-					velocity.y = jump_force
+		return
+	if event.is_action_pressed(&"jump") and is_on_floor():
+		velocity.y = jump_force
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(&"interact"):
+		_try_interact()
+		get_viewport().set_input_as_handled()
 
 
 func _input(event: InputEvent) -> void:
 	if not _controls_enabled:
 		return
-	if not (event is InputEventMouseButton) or not event.pressed:
+	# A click in a released window recaptures the mouse rather than swinging.
+	if (
+		event is InputEventMouseButton
+		and event.pressed
+		and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED
+	):
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		return
-	if event.button_index == MOUSE_BUTTON_LEFT:
-		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-		else:
-			var clip_name := "punch_left" if _punch_left_next else "punch_right"
-			_punch_left_next = not _punch_left_next
-			_trigger_attack(clip_name)
-	elif event.button_index == MOUSE_BUTTON_RIGHT and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if event.is_action_pressed(&"attack"):
+		var clip_name := "punch_left" if _punch_left_next else "punch_right"
+		_punch_left_next = not _punch_left_next
+		_trigger_attack(clip_name)
+	elif event.is_action_pressed(&"attack_alt"):
 		_trigger_attack("hit")
 
 
@@ -185,12 +201,14 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		_update_camera_transform()
 		_update_animation(false)
+		_set_prompt("")
 		return
 
-	var input_vector := Vector2(
-		float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A)),
-		float(Input.is_physical_key_pressed(KEY_S)) - float(Input.is_physical_key_pressed(KEY_W))
-	).normalized()
+	_apply_pad_look(delta)
+
+	var input_vector := Input.get_vector(
+		&"move_left", &"move_right", &"move_forward", &"move_back"
+	)
 
 	# Movement comes from the independent orbit yaw, not from a camera transform
 	# that can inherit character rotation.
@@ -203,7 +221,7 @@ func _physics_process(delta: float) -> void:
 	).normalized()
 
 	var sprinting := (
-		Input.is_physical_key_pressed(KEY_SHIFT)
+		Input.is_action_pressed(&"sprint")
 		and direction.length_squared() > 0.01
 	)
 	var target_speed := sprint_speed if sprinting else walk_speed
@@ -231,6 +249,26 @@ func _physics_process(delta: float) -> void:
 	_update_camera_recenter(input_vector, delta)
 	_update_camera_transform()
 	_update_animation(sprinting)
+	_update_interaction_probe()
+
+
+func _apply_pad_look(delta: float) -> void:
+	var look_vector := Input.get_vector(
+		&"look_left", &"look_right", &"look_up", &"look_down"
+	)
+	if look_vector.is_zero_approx():
+		return
+	_camera_yaw = wrapf(
+		_camera_yaw - look_vector.x * pad_look_speed * delta,
+		-PI,
+		PI
+	)
+	_camera_pitch = clampf(
+		_camera_pitch - look_vector.y * pad_look_speed * delta,
+		minimum_pitch,
+		maximum_pitch
+	)
+	_time_since_manual_look = 0.0
 
 
 func _update_camera_recenter(input_vector: Vector2, delta: float) -> void:
@@ -270,6 +308,78 @@ func _update_animation(sprinting: bool) -> void:
 		_set_animation("walk")
 
 
+## ---------------------------------------------------------------------
+## Interaction: the third-person twin of the first-person controller's
+## raycast prompt. Targets are plain Interactable (interactable.gd) bodies,
+## picked up by duck-typing so any node exposing the two methods works.
+## ---------------------------------------------------------------------
+
+func _update_interaction_probe() -> void:
+	var target := _probe_interactable()
+	var text := ""
+	if target != null:
+		var target_prompt: String = target.get_interaction_prompt()
+		if not target_prompt.is_empty():
+			text = "[%s] %s" % [_interact_key_label, target_prompt]
+			if target.get("face_player_on_interact") and target.has_method("face_toward"):
+				target.face_toward(global_position)
+	_set_prompt(text)
+
+
+func _try_interact() -> void:
+	var target := _probe_interactable()
+	if target != null and target.has_method("interact"):
+		target.interact(self)
+
+
+## Aims down the camera's view axis. The orbit camera sits behind the player,
+## so the ray has to cover that gap before INTERACT_RANGE starts counting or
+## the reach would shrink as the spring arm extends.
+func _probe_interactable() -> Node3D:
+	if camera == null or not is_inside_tree():
+		return null
+	var origin := camera.global_position
+	var reach := origin.distance_to(global_position) + INTERACT_RANGE
+	var query := PhysicsRayQueryParameters3D.create(
+		origin,
+		origin - camera.global_basis.z * reach,
+		INTERACT_MASK,
+		[get_rid()]
+	)
+	query.collide_with_areas = false
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return null
+	var collider := hit.get("collider") as Node3D
+	if collider == null or not collider.has_method("get_interaction_prompt"):
+		return null
+	return collider
+
+
+func _set_prompt(text: String) -> void:
+	if text == _last_prompt:
+		return
+	_last_prompt = text
+	prompt_changed.emit(text)
+
+
+## Reads the prompt's key name back out of the InputMap so a rebind does not
+## leave the HUD advertising the wrong key.
+func _action_key_label(action_name: StringName, fallback: String) -> String:
+	if not InputMap.has_action(action_name):
+		return fallback
+	for event in InputMap.action_get_events(action_name):
+		var key_event := event as InputEventKey
+		if key_event == null:
+			continue
+		var label := key_event.as_text_physical_keycode()
+		if label.is_empty():
+			label = key_event.as_text_keycode()
+		if not label.is_empty():
+			return label
+	return fallback
+
+
 func reset_character(position_value: Vector3) -> void:
 	global_position = position_value
 	velocity = Vector3.ZERO
@@ -292,6 +402,18 @@ func set_controls_enabled(enabled: bool) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		velocity.x = 0.0
 		velocity.z = 0.0
+		_set_prompt("")
+
+
+## The first-person controller names this the other way round. Shared UI
+## (dialogue_choice_ui.gd, vhs_system.gd) calls set_ui_locked on whichever
+## player it was handed, so both controllers answer to both names.
+func set_ui_locked(locked: bool) -> void:
+	set_controls_enabled(not locked)
+
+
+func is_ui_locked() -> bool:
+	return not _controls_enabled
 
 
 func get_character_id() -> String:

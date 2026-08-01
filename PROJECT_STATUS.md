@@ -167,19 +167,39 @@ driving is **physics-sim** (`VehicleBody3D`) · **vehicles first**.
 ### ✅ Step 0 — Version control — DONE
 First commit `4148d22`. Commit at the end of each milestone.
 
-### Milestone 1 — Foundations (blocking)
-- **1a. InputMap.** No `[input]` section exists; every control is a hardcoded
-  `Input.is_physical_key_pressed(KEY_*)`. Define real actions before vehicles
-  add more. Unlocks gamepad + rebinding.
-- **1b. Port interaction into third person.** *The biggest structural gap:*
-  `cblock_player.gd` (used by **both** free-roam maps) has **no raycast, no `E`,
-  no prompt**. The system exists only in first-person `player.gd:374-441`
-  (`_update_prompt`, `_try_interact`, `_try_melee`, `_apply_melee_hit`).
-  Reuse `interactable.gd` unchanged. Raycast **from the camera**, ~3 m.
-- **1c. UI-lock mismatch.** `dialogue_choice_ui.gd:57` calls
-  `player.set_ui_locked()`, implemented only by `player.gd`;
-  `cblock_player.gd` has `set_controls_enabled()`. Add an alias.
-- **1d. Pause menu.**
+### ✅ Milestone 1 — Foundations — DONE
+- **1a. InputMap — done.** 20 actions with keyboard, mouse and gamepad
+  bindings. `scripts/tools/setup_input_map.gd` is the **source of truth**: edit
+  its action table and re-run it, never hand-edit the `[input]` block. Both
+  free-roam maps and `cblock_player.gd` now read actions; `player.gd` and
+  `main_menu.gd` still use keycodes and are left alone (both retire with the
+  horror world in Milestone 3).
+  - Two engine details that cost time: **key/mouse events carry a device tag**
+    (`16` keyboard, `32` mouse) and `InputMap` compares device IDs, so events
+    built with `device = 0` match nothing — the engine's own `ui_*` actions use
+    the same tags. Pad events must be written with **`device = -1`**
+    (any device) or only controller #1 works.
+- **1b. Interaction in third person — done.** `cblock_player.gd` gained a
+  `prompt_changed` signal, a camera-aimed probe (`_probe_interactable`) and
+  `_try_interact`. The ray reaches `camera→player distance + INTERACT_RANGE`
+  so the orbit camera's distance does not eat the player's 3 m of reach.
+  `interactable.gd` is untouched; targets are matched by duck-typing.
+  The prompt names its key by reading it back out of the InputMap, so a rebind
+  cannot leave the HUD lying. Both maps show it on a new `HUD/Interact` label.
+  **Melee still resolves against nothing** — deliberately left for Milestone 6.
+- **1c. UI-lock mismatch — done.** `cblock_player.gd` now answers to
+  `set_ui_locked()` / `is_ui_locked()` as well as `set_controls_enabled()`.
+- **1d. Pause menu — done.** `scripts/pause_menu.gd`, built in code and
+  instanced by both maps. `PROCESS_MODE_ALWAYS` (not `WHEN_PAUSED`, which would
+  stop it seeing the key that opens it). Controls list is generated from the
+  InputMap. It sits below the map root so it sees input first — the CBlock
+  character picker calls `set_pause_blocked(true)` to claim Esc while up.
+
+**Watch out:** a `class_name` reference fails to parse in a headless
+`--script` run, because the global class cache is not built yet — the scene
+then instantiates with a **null script and the smoke test still passes**. Map
+scripts therefore `preload()` the pause menu instead. `banilad_smoke_test.gd`
+now asserts the root script attached.
 
 ### Milestone 2 — Drivable vehicles
 - **2a. Fix road collision first — blocks physics wheels.** Roads are separate
@@ -263,10 +283,29 @@ framework + `dialogue_choice_ui.gd`. Melee animates in
 
 ## 7. Tests
 
+All run as `--headless --path . --script res://<path>`:
+
+```bash
+.tools/godot/Godot_v4.7-stable_win64.exe --headless --path . --script res://scripts/tools/third_person_smoke_test.gd
+```
+
+- `scripts/tools/input_map_smoke_test.gd` — every action exists and a realistic
+  device event still matches it (guards the device-tag trap in §5, 1a).
+- `scripts/tools/third_person_smoke_test.gd` — builds a synthetic scene and
+  asserts the interaction prompt, the `interact` action firing an
+  `Interactable`, the UI lock, and the pause menu pausing the tree. Fast.
 - `scripts/tools/banilad_smoke_test.gd` — headless map assertions.
 - `scripts/mechanics_smoke_test.gd:35-113` — **the only regression guard on the
   2710-line `school_building.gd`** (all 10 levels' slabs, corridors, elevator
   landings, stair collision). Keep these; cut only the horror asserts at
   `:22-33` and `:114-133`. Critical once the school moves into the city.
+  - ⚠️ **Currently failing, and it was already failing at `4148d22`** (verified
+    against a clean tree — not caused by Milestone 1). Line 59:
+    *"UC's left-side street entrance must stay passable"* — a `DayLocker`
+    StaticBody3D blocks the route from `(12, 1.2, 18)` to `(12, 1.2, 25.5)`.
+  - A failed GDScript `assert()` halts `_initialize` **before its `quit()`**, so
+    the run does not fail — it **hangs forever** at ~0% CPU. Always run this one
+    under a timeout. Worth converting to the `_failures` + `quit(1)` pattern the
+    other tests use. Fix before the school is moved in Milestone 4.
 - `scripts/player_controller_smoke_test.gd` — asserts first-person setup; retire
   with `player.gd`.

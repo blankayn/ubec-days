@@ -5,10 +5,14 @@ extends Node3D
 const MENU_SCENE := "res://main_menu.tscn"
 const SPAWN_POSITION := Vector3(0.0, 0.94, 0.0)
 const CharacterRoster := preload("res://scripts/cblock_character_roster.gd")
+# Preloaded rather than referenced by class_name: headless `--script` runs load
+# this before the global class cache exists, and the bare name fails to parse.
+const PauseMenuScript := preload("res://scripts/pause_menu.gd")
 
 @onready var player: CharacterBody3D = $Player
 @onready var hud: CanvasLayer = $HUD
 @onready var prompt_label: Label = $HUD/Prompt
+@onready var interact_label: Label = $HUD/Interact
 @onready var message_label: Label = $HUD/Message
 @onready var help_label: Label = $HUD/TopBar/Help
 
@@ -17,6 +21,7 @@ var _picker_open := false
 var _picker_overlay: ColorRect
 var _character_buttons: Dictionary = {}
 var _selected_preview_id := ""
+var _pause_menu: PauseMenuScript
 
 
 func _ready() -> void:
@@ -24,8 +29,12 @@ func _ready() -> void:
 	CharacterRoster.load_saved()
 	if player.has_signal("status_message"):
 		player.status_message.connect(_show_message)
+	if player.has_signal("prompt_changed"):
+		player.prompt_changed.connect(_set_interact_prompt)
 	_set_prompt("")
+	_set_interact_prompt("")
 	_build_character_picker()
+	_build_pause_menu()
 	_refresh_help_text()
 	await get_tree().create_timer(5.0).timeout
 	if not _picker_open:
@@ -38,34 +47,47 @@ func _physics_process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not event is InputEventKey or not event.pressed or event.echo:
+	if event.is_action_pressed(&"character_picker"):
+		if _picker_open:
+			_close_character_picker()
+		else:
+			_open_character_picker()
+		get_viewport().set_input_as_handled()
 		return
-	match event.keycode:
-		KEY_C:
-			if _picker_open:
-				_close_character_picker()
-			else:
-				_open_character_picker()
+	# The picker owns the pause key while it is up, so Esc closes it instead of
+	# stacking the pause menu on top.
+	if _picker_open:
+		if event.is_action_pressed(&"pause"):
+			_close_character_picker()
 			get_viewport().set_input_as_handled()
-		KEY_ESCAPE:
-			if _picker_open:
-				_close_character_picker()
-				get_viewport().set_input_as_handled()
-		KEY_M:
-			if _picker_open:
-				return
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-			get_tree().change_scene_to_file(MENU_SCENE)
-		KEY_R:
-			if _picker_open:
-				return
-			if player.has_method("reset_character"):
-				player.reset_character(SPAWN_POSITION)
+		return
+	if event.is_action_pressed(&"exit_to_menu"):
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		get_tree().change_scene_to_file(MENU_SCENE)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(&"respawn"):
+		if player.has_method("reset_character"):
+			player.reset_character(SPAWN_POSITION)
+		get_viewport().set_input_as_handled()
+
+
+func _build_pause_menu() -> void:
+	_pause_menu = PauseMenuScript.new()
+	_pause_menu.name = "PauseMenu"
+	_pause_menu.player = player
+	add_child(_pause_menu)
 
 
 func _set_prompt(text: String) -> void:
 	prompt_label.text = text
 	prompt_label.visible = not text.is_empty()
+
+
+## Interactable prompts get their own line so the picker hint and an
+## "[E] Inspect" do not fight over one label.
+func _set_interact_prompt(text: String) -> void:
+	interact_label.text = text
+	interact_label.visible = not text.is_empty()
 
 
 func _show_message(text: String, duration: float = 4.0) -> void:
@@ -81,7 +103,7 @@ func _show_message(text: String, duration: float = 4.0) -> void:
 func _refresh_help_text() -> void:
 	help_label.text = (
 		"WASD move  |  Mouse orbit  |  Shift sprint  |  Space jump  |  "
-		+ "LMB punch  |  RMB hit  |  C character  |  M menu  |  R reset"
+		+ "LMB punch  |  E interact  |  Esc pause  |  C character  |  M menu"
 	)
 
 
@@ -232,6 +254,8 @@ func _open_character_picker() -> void:
 	_picker_overlay.visible = true
 	if player.has_method("set_controls_enabled"):
 		player.set_controls_enabled(false)
+	if _pause_menu != null:
+		_pause_menu.set_pause_blocked(true)
 	_set_prompt("Choose a character, then Play")
 
 
@@ -239,6 +263,8 @@ func _close_character_picker() -> void:
 	_picker_open = false
 	_picker_overlay.visible = false
 	_set_prompt("")
+	if _pause_menu != null:
+		_pause_menu.set_pause_blocked(false)
 	if player.has_method("set_controls_enabled"):
 		player.set_controls_enabled(true)
 

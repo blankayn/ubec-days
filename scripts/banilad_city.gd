@@ -4,6 +4,9 @@ extends Node3D
 
 const MENU_SCENE := "res://main_menu.tscn"
 const LANDMARK_DATA := "res://assets/maps/banilad_landmarks.json"
+# Preloaded rather than referenced by class_name: headless `--script` runs load
+# this before the global class cache exists, and the bare name fails to parse.
+const PauseMenuScript := preload("res://scripts/pause_menu.gd")
 
 # On Gov. M. Cuenco Avenue, roughly 120 m south of Gaisano Country Mall.
 const SPAWN_POSITION := Vector3(12.79, 1.2, -554.24)
@@ -17,6 +20,7 @@ const LANDMARK_RANGE := 90.0
 @onready var player: CharacterBody3D = $Player
 @onready var hud: CanvasLayer = $HUD
 @onready var prompt_label: Label = $HUD/Prompt
+@onready var interact_label: Label = $HUD/Interact
 @onready var message_label: Label = $HUD/Message
 @onready var help_label: Label = $HUD/TopBar/Help
 
@@ -24,6 +28,7 @@ var _landmarks: Array = []
 var _nearest_name := ""
 var _message_generation := 0
 var _scan_accumulator := 0.0
+var _pause_menu: PauseMenuScript
 
 
 func _ready() -> void:
@@ -31,9 +36,20 @@ func _ready() -> void:
 	_load_landmarks()
 	if player.has_signal("status_message"):
 		player.status_message.connect(_show_message)
+	if player.has_signal("prompt_changed"):
+		player.prompt_changed.connect(_set_interact_prompt)
+	_build_pause_menu()
 	_respawn()
 	_set_prompt("")
+	_set_interact_prompt("")
 	_show_message("BANILAD  //  Gov. M. Cuenco Avenue, Cebu City", 5.0)
+
+
+func _build_pause_menu() -> void:
+	_pause_menu = PauseMenuScript.new()
+	_pause_menu.name = "PauseMenu"
+	_pause_menu.player = player
+	add_child(_pause_menu)
 
 
 func _physics_process(delta: float) -> void:
@@ -48,15 +64,14 @@ func _physics_process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not event is InputEventKey or not event.pressed or event.echo:
-		return
-	match event.keycode:
-		KEY_M:
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-			get_tree().change_scene_to_file(MENU_SCENE)
-		KEY_R:
-			_respawn()
-			_show_message("Returned to Gov. M. Cuenco Avenue", 2.5)
+	if event.is_action_pressed(&"exit_to_menu"):
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		get_tree().change_scene_to_file(MENU_SCENE)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(&"respawn"):
+		_respawn()
+		_show_message("Returned to Gov. M. Cuenco Avenue", 2.5)
+		get_viewport().set_input_as_handled()
 
 
 func _respawn() -> void:
@@ -113,6 +128,13 @@ func _update_nearest_landmark() -> void:
 func _set_prompt(text: String) -> void:
 	prompt_label.text = text
 	prompt_label.visible = not text.is_empty()
+
+
+## Interactable prompts get their own line so a landmark call-out and an
+## "[E] Inspect" can be on screen at once.
+func _set_interact_prompt(text: String) -> void:
+	interact_label.text = text
+	interact_label.visible = not text.is_empty()
 
 
 func _show_message(text: String, duration: float = 4.0) -> void:

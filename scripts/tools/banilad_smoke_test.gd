@@ -52,6 +52,14 @@ func _navigation_ready() -> bool:
 
 
 func _run_checks() -> void:
+	# A script that fails to parse leaves the node scriptless rather than
+	# stopping instantiation, so every other check below would pass on a scene
+	# that does nothing. Catch that first.
+	if _level.get_script() == null:
+		_fail("banilad_city.gd did not attach (check the log for a parse error)")
+	if _level.get_node_or_null("PauseMenu") == null:
+		_fail("PauseMenu was not built by banilad_city.gd")
+
 	var player := _level.get_node_or_null("Player") as CharacterBody3D
 	if player == null:
 		_fail("Player node missing")

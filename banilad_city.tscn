@@ -109,7 +109,25 @@ offset_right = 690.0
 offset_bottom = 66.0
 theme_override_colors/font_color = Color(0.7, 0.8, 0.87, 1)
 theme_override_font_sizes/font_size = 14
-text = "WASD move  |  Mouse orbit  |  Shift sprint  |  Space jump  |  M menu  |  R reset to avenue"
+text = "WASD move  |  Mouse orbit  |  Shift sprint  |  Space jump  |  E interact  |  Esc pause  |  M menu  |  R reset"
+
+[node name="Interact" type="Label" parent="HUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -400.0
+offset_top = -216.0
+offset_right = 400.0
+offset_bottom = -166.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.72, 0.95, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.02, 0.02, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 24
+horizontal_alignment = 1
 
 [node name="Prompt" type="Label" parent="HUD"]
 anchors_preset = 7

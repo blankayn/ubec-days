@@ -70,6 +70,25 @@ BALUSTER_STEP = 0.55
 ROOF_PITCH = 0.42         # rise per metre of run on the clay tile roofs
 ROOF_OVERHANG = 1.3
 
+# --- The landmark features that make it this mall and not any arcade -------
+ENTRANCE_WIDTH = 26.0     # the tall centre bay carrying the sign and cupola
+ENTRANCE_DEPTH = 13.0
+ENTRANCE_RISE = 10.4      # tops the eaves, and clears the roof ridge behind it
+ENTRANCE_ARCH_WIDTH = 15.0
+CUPOLA_RADIUS = 3.1
+CUPOLA_HEIGHT = 4.4
+
+PAVILION_SIZE = 15.0      # square towers closing each end of the frontage
+PAVILION_RISE = 4.6
+PAVILION_ARCH_WIDTH = 8.4
+
+PORTE_SIZE = 13.0         # detached entrance canopy out in the car park
+PORTE_HEIGHT = 5.6
+PORTE_STANDOFF = 34.0     # how far in front of the entrance it sits
+
+SHOPFRONT_HEIGHT = 3.0    # glazing under the ground-floor arcade
+SIGN_HEIGHT = 0.85
+
 # --- Palette, sampled from the reference -----------------------------------
 PALETTE = {
     "Mall_Stucco":   (0.902, 0.867, 0.796),
@@ -237,6 +256,84 @@ def _inradius(ring):
     return best
 
 
+def pyramid_roof(batch, ring, base_z, rise, material, overhang=0.9):
+    """Full hip converging on a point: the pavilion and porte-cochere roofs."""
+    outer = offset_ring(ring, -overhang)
+    cx = sum(p[0] for p in outer) / len(outer)
+    cy = sum(p[1] for p in outer) / len(outer)
+    apex_index = len(outer)
+    verts = [(p[0], p[1], base_z) for p in outer] + [(cx, cy, base_z + rise)]
+    faces = [(i, (i + 1) % len(outer), apex_index) for i in range(len(outer))]
+    batch.add(verts, faces, material)
+    return base_z + rise
+
+
+def regular_ring(cx, cy, radius, sides, phase=0.0):
+    return [(cx + math.cos(phase + 2 * math.pi * i / sides) * radius,
+             cy + math.sin(phase + 2 * math.pi * i / sides) * radius)
+            for i in range(sides)]
+
+
+def cupola(batch, cx, cy, base_z, radius, height):
+    """Octagonal drum under a shallow glazed dome, as on the centre bay."""
+    drum_h = height * 0.42
+    drum = regular_ring(cx, cy, radius, 8, math.pi / 8.0)
+    verts, faces = prism(drum, base_z, base_z + drum_h)
+    batch.add(verts, faces, "Mall_Trim")
+
+    # Dome as a few latitude bands so it silhouettes as a curve, not a cone.
+    bands = 4
+    dome_h = height - drum_h
+    previous = [(p[0], p[1], base_z + drum_h) for p in drum]
+    for step in range(1, bands + 1):
+        t = step / float(bands)
+        r = radius * math.cos(t * math.pi * 0.5)
+        z = base_z + drum_h + dome_h * math.sin(t * math.pi * 0.5)
+        current = [(p[0], p[1], z) for p in regular_ring(cx, cy, r, 8, math.pi / 8.0)]
+        n = len(previous)
+        verts = previous + current
+        faces = [(i, (i + 1) % n, n + (i + 1) % n, n + i) for i in range(n)]
+        batch.add(verts, faces, "Mall_Glass")
+        previous = current
+
+
+def arched_window(batch, centre, normal, tangent, width, sill_z, head_z,
+                  material, surround="Mall_Trim", proud=0.22):
+    """A tall round-headed window: rectangle below the springing, fan above."""
+    nx, ny = normal
+    ux, uy = tangent
+    half = width * 0.5
+    rise = half
+    spring_z = max(sill_z + 0.6, head_z - rise)
+    ox, oy = centre[0] + nx * proud, centre[1] + ny * proud
+
+    left = (ox - ux * half, oy - uy * half)
+    right = (ox + ux * half, oy + uy * half)
+    batch.add([(left[0], left[1], sill_z), (right[0], right[1], sill_z),
+               (right[0], right[1], spring_z), (left[0], left[1], spring_z)],
+              [(0, 1, 2, 3)], material)
+
+    segments = 8
+    apex_z = spring_z + rise
+    points = []
+    for step in range(segments + 1):
+        angle = math.pi * step / segments
+        points.append((ox - ux * half * math.cos(angle),
+                       oy - uy * half * math.cos(angle),
+                       spring_z + rise * math.sin(angle)))
+    hub = (ox, oy, spring_z)
+    hub_index = len(points)
+    faces = [(i, i + 1, hub_index) for i in range(segments)]
+    batch.add(points + [hub], faces, material)
+
+    # Keystone-ish trim over the crown so the head reads against the wall.
+    batch.add([(ox - ux * 0.5, oy - uy * 0.5, apex_z - 0.1),
+               (ox + ux * 0.5, oy + uy * 0.5, apex_z - 0.1),
+               (ox + ux * 0.5, oy + uy * 0.5, apex_z + 0.7),
+               (ox - ux * 0.5, oy - uy * 0.5, apex_z + 0.7)],
+              [(0, 1, 2, 3)], surround)
+
+
 def band(batch, ring, z0, z1, material, bulge=0.18):
     """A cornice or floor band standing proud of the wall it sits on.
 
@@ -252,7 +349,8 @@ def band(batch, ring, z0, z1, material, bulge=0.18):
 # The arcade: piers, round arches, spandrels
 # ---------------------------------------------------------------------------
 
-def arch_bay(batch, p0, p1, normal, z0, z1, materials, with_balustrade=False):
+def arch_bay(batch, p0, p1, normal, z0, z1, materials, with_balustrade=False,
+             with_back=True):
     """One bay of arcade between two pier centres, seen from `normal`.
 
     Built additively: the opening is the gap left between the pier faces and
@@ -277,11 +375,13 @@ def arch_bay(batch, p0, p1, normal, z0, z1, materials, with_balustrade=False):
     mid = ((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5)
     half = opening * 0.5
 
-    # Recessed back wall, which is what makes the opening read as depth.
-    back = (mid[0] - nx * ARCADE_DEPTH, mid[1] - ny * ARCADE_DEPTH)
-    verts, faces = box(back[0], back[1], z0, z1,
-                       span * 0.5, 0.12, math.atan2(uy, ux))
-    batch.add(verts, faces, materials["back"])
+    # Recessed back wall, which is what makes the opening read as depth. A
+    # freestanding canopy has none, or it reads as a solid black box.
+    if with_back:
+        back = (mid[0] - nx * ARCADE_DEPTH, mid[1] - ny * ARCADE_DEPTH)
+        verts, faces = box(back[0], back[1], z0, z1,
+                           span * 0.5, 0.12, math.atan2(uy, ux))
+        batch.add(verts, faces, materials["back"])
 
     # Arch ring: a strip of quads following the semicircle.
     front = 0.0
@@ -374,6 +474,11 @@ def arcaded_edge(batch, p0, p1, ground_h, eaves_h, tiers, materials):
         for i in range(bays):
             arch_bay(batch, points[i], points[i + 1], normal, z0, z1,
                      materials, with_balustrade=upper)
+            if not upper:
+                mid = ((points[i][0] + points[i + 1][0]) * 0.5,
+                       (points[i][1] + points[i + 1][1]) * 0.5)
+                shopfront(batch, mid, normal, (ux, uy),
+                          math.dist(points[i], points[i + 1]))
         for point in points:
             verts, faces = box(point[0], point[1], 0.0, z1,
                                PIER_WIDTH * 0.5, PIER_DEPTH * 0.5,
@@ -385,6 +490,188 @@ def arcaded_edge(batch, p0, p1, ground_h, eaves_h, tiers, materials):
 # ---------------------------------------------------------------------------
 # Assembly
 # ---------------------------------------------------------------------------
+
+def oriented_ring(centre, tangent, half_u, half_v):
+    ux, uy = tangent
+    vx, vy = -uy, ux
+    return [
+        (centre[0] - ux * half_u - vx * half_v, centre[1] - uy * half_u - vy * half_v),
+        (centre[0] + ux * half_u - vx * half_v, centre[1] + uy * half_u - vy * half_v),
+        (centre[0] + ux * half_u + vx * half_v, centre[1] + uy * half_u + vy * half_v),
+        (centre[0] - ux * half_u + vx * half_v, centre[1] - uy * half_u + vy * half_v),
+    ]
+
+
+def entrance_block(batch, centre, normal, tangent, eaves_h):
+    """The centre bay: atrium arch, signage band, tile hip and a cupola."""
+    top = eaves_h + ENTRANCE_RISE
+    # Projects past the facade so the arch stands clear of the roof behind.
+    seat = (centre[0] + normal[0] * ENTRANCE_DEPTH * 0.55,
+            centre[1] + normal[1] * ENTRANCE_DEPTH * 0.55)
+    ring = oriented_ring(seat, tangent, ENTRANCE_WIDTH * 0.5, ENTRANCE_DEPTH * 0.5)
+    verts, faces = prism(ring, 0.0, top)
+    batch.add(verts, faces, "Mall_Stucco")
+
+    face = (seat[0] + normal[0] * ENTRANCE_DEPTH * 0.5,
+            seat[1] + normal[1] * ENTRANCE_DEPTH * 0.5)
+    arched_window(batch, face, normal, tangent, ENTRANCE_ARCH_WIDTH,
+                  1.2, top - 5.2, "Mall_Glass")
+
+    # Signage band across the parapet, the "GAISANO COUNTRY MALL" strip.
+    sign = oriented_ring(
+        (face[0] + normal[0] * 0.24, face[1] + normal[1] * 0.24),
+        tangent, ENTRANCE_WIDTH * 0.40, 0.22)
+    verts, faces = prism(sign, top - 4.1, top - 4.1 + SIGN_HEIGHT * 1.5)
+    batch.add(verts, faces, "Mall_Sign")
+
+    band(batch, ring, top - CORNICE_HEIGHT, top, "Mall_Trim")
+    ridge = pyramid_roof(batch, ring, top, 3.4, "Mall_Tile", overhang=1.1)
+    cupola(batch, seat[0], seat[1], ridge - 0.5, CUPOLA_RADIUS, CUPOLA_HEIGHT)
+
+
+def corner_pavilion(batch, centre, normal, tangent, eaves_h):
+    """Square end tower with a big arched window and a pyramidal tile roof."""
+    top = eaves_h + PAVILION_RISE
+    seat = (centre[0] + normal[0] * PAVILION_SIZE * 0.30,
+            centre[1] + normal[1] * PAVILION_SIZE * 0.30)
+    ring = oriented_ring(seat, tangent, PAVILION_SIZE * 0.5, PAVILION_SIZE * 0.5)
+    verts, faces = prism(ring, 0.0, top)
+    batch.add(verts, faces, "Mall_Stucco")
+
+    face = (seat[0] + normal[0] * PAVILION_SIZE * 0.5,
+            seat[1] + normal[1] * PAVILION_SIZE * 0.5)
+    arched_window(batch, face, normal, tangent, PAVILION_ARCH_WIDTH,
+                  4.4, top - 2.2, "Mall_Glass")
+    band(batch, ring, top - CORNICE_HEIGHT, top, "Mall_Trim")
+    pyramid_roof(batch, ring, top, PAVILION_SIZE * 0.30, "Mall_Tile")
+
+
+def porte_cochere(batch, centre, normal, tangent):
+    """Detached drop-off canopy standing out in the car park."""
+    seat = (centre[0] + normal[0] * PORTE_STANDOFF,
+            centre[1] + normal[1] * PORTE_STANDOFF)
+    half = PORTE_SIZE * 0.5
+    ring = oriented_ring(seat, tangent, half, half)
+
+    for corner in ring:
+        verts, faces = box(corner[0], corner[1], 0.0, PORTE_HEIGHT,
+                           0.85, 0.85, math.atan2(tangent[1], tangent[0]))
+        batch.add(verts, faces, "Mall_Stone")
+
+    materials = {"wall": "Mall_Stucco", "trim": "Mall_Trim",
+                 "back": "Mall_Shadow", "soffit": "Mall_Trim"}
+    for i in range(len(ring)):
+        p0, p1 = ring[i], ring[(i + 1) % len(ring)]
+        arch_bay(batch, p0, p1, edge_normal(p0, p1), 0.0, PORTE_HEIGHT,
+                 materials, with_back=False)
+
+    lintel = oriented_ring(seat, tangent, half + 0.5, half + 0.5)
+    verts, faces = prism(lintel, PORTE_HEIGHT - 0.5, PORTE_HEIGHT)
+    batch.add(verts, faces, "Mall_Trim")
+    pyramid_roof(batch, lintel, PORTE_HEIGHT, PORTE_SIZE * 0.42, "Mall_Tile")
+
+
+def shopfront(batch, mid, normal, tangent, span):
+    """Glazing and a sign strip on the back wall of a ground-floor bay."""
+    nx, ny = normal
+    face = (mid[0] - nx * (ARCADE_DEPTH - 0.14),
+            mid[1] - ny * (ARCADE_DEPTH - 0.14))
+    half = max(0.4, span * 0.5 - PIER_WIDTH * 0.6)
+    ring = oriented_ring(face, tangent, half, 0.06)
+    verts, faces = prism(ring, 0.25, SHOPFRONT_HEIGHT)
+    batch.add(verts, faces, "Mall_Glass")
+    verts, faces = prism(ring, SHOPFRONT_HEIGHT, SHOPFRONT_HEIGHT + SIGN_HEIGHT)
+    batch.add(verts, faces, "Mall_Sign")
+
+
+def point_in_ring(point, ring):
+    x, y = point
+    inside = False
+    n = len(ring)
+    for i in range(n):
+        x0, y0 = ring[i]
+        x1, y1 = ring[(i + 1) % n]
+        if (y0 > y) != (y1 > y):
+            t = (y - y0) / (y1 - y0)
+            if x < x0 + t * (x1 - x0):
+                inside = not inside
+    return inside
+
+
+def is_exposed(mid, normal, rings, standoff=7.0):
+    """True if stepping outward from this edge lands in the open.
+
+    The wings abut each other, so plenty of edges face the car park direction
+    while being buried inside the complex. Building an arcade -- or worse, the
+    entrance block -- on one of those puts it in the middle of the roof.
+    """
+    probe = (mid[0] + normal[0] * standoff, mid[1] + normal[1] * standoff)
+    for way_id in WINGS:
+        ring = rings.get(way_id)
+        if ring and len(ring) >= 3 and point_in_ring(probe, ring):
+            return False
+    return True
+
+
+def front_edges(rings):
+    """Every footprint edge that fronts the car park, longest first."""
+    found = []
+    for way_id, (_ground_h, eaves_h, _tiers) in WINGS.items():
+        ring = rings.get(way_id)
+        if not ring or len(ring) < 3:
+            continue
+        ring = as_ccw(ring)
+        for i in range(len(ring)):
+            p0, p1 = ring[i], ring[(i + 1) % len(ring)]
+            normal = edge_normal(p0, p1)
+            if (normal[0] * FRONT_DIRECTION[0] +
+                    normal[1] * FRONT_DIRECTION[1]) <= FRONT_DOT:
+                continue
+            length = math.dist(p0, p1)
+            mid = ((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5)
+            if not is_exposed(mid, normal, rings):
+                continue
+            tangent = ((p1[0] - p0[0]) / length, (p1[1] - p0[1]) / length)
+            found.append({"mid": mid, "normal": normal, "tangent": tangent,
+                          "length": length, "eaves": eaves_h,
+                          "p0": p0, "p1": p1})
+    found.sort(key=lambda e: -e["length"])
+    return found
+
+
+def place_landmark_features(batch, rings):
+    """Centre bay, end pavilions and the drop-off canopy along the frontage."""
+    edges = front_edges(rings)
+    if not edges:
+        log("no front-facing edges; skipping landmark features")
+        return
+
+    # The entrance belongs in the middle of the frontage with wings either
+    # side, not on whichever edge happens to be longest.
+    axis = edges[0]["tangent"]
+
+    def along(point):
+        return point[0] * axis[0] + point[1] * axis[1]
+
+    spread = [along(e["mid"]) for e in edges]
+    midpoint = (min(spread) + max(spread)) * 0.5
+    wide_enough = [e for e in edges if e["length"] >= ENTRANCE_WIDTH * 0.8]
+    main = min(wide_enough or edges, key=lambda e: abs(along(e["mid"]) - midpoint))
+
+    entrance_block(batch, main["mid"], main["normal"], main["tangent"],
+                   main["eaves"])
+    porte_cochere(batch, main["mid"], main["normal"], main["tangent"])
+
+    corners = sorted(edges, key=lambda e: along(e["mid"]))
+    for edge in (corners[0], corners[-1]):
+        if math.dist(edge["mid"], main["mid"]) < PAVILION_SIZE:
+            continue
+        corner_pavilion(batch, edge["mid"], edge["normal"], edge["tangent"],
+                        edge["eaves"])
+    log("landmark features: entrance + porte-cochere + %d pavilion(s)"
+        % sum(1 for e in (corners[0], corners[-1])
+              if math.dist(e["mid"], main["mid"]) >= PAVILION_SIZE))
+
 
 def load_rings():
     data = json.loads(OSM.read_text(encoding="utf-8"))
@@ -451,9 +738,11 @@ def build_mall(batch, rings):
         for i in range(len(ring)):
             p0, p1 = ring[i], ring[(i + 1) % len(ring)]
             normal = edge_normal(p0, p1)
+            mid = ((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5)
             faces_front = (normal[0] * FRONT_DIRECTION[0] +
                            normal[1] * FRONT_DIRECTION[1]) > FRONT_DOT
-            if faces_front:
+            # An arcade on a buried edge is invisible and still costs triangles.
+            if faces_front and is_exposed(mid, normal, rings):
                 arcade_bays += arcaded_edge(batch, p0, p1, ground_h, eaves_h,
                                             tiers, materials)
             else:
@@ -467,6 +756,7 @@ def build_mall(batch, rings):
         hip_roof(batch, ring, eaves_h, "Mall_Tile", "Mall_Deck")
 
     log("arcade bays: {:d}".format(arcade_bays))
+    place_landmark_features(batch, rings)
 
 
 def main():

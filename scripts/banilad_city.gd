@@ -15,6 +15,20 @@ const JholoNpcPropScript := preload("res://scripts/jholo_npc_prop.gd")
 const EdwardNpcPropScript := preload("res://scripts/edward_npc_prop.gd")
 const CBlockEdwardScene := preload("res://assets/npcs/cblock_edward_npc.tscn")
 const DrivableVehicleScript := preload("res://scripts/vehicle_body.gd")
+const CountryMallAsset := preload("res://assets/buildings/gaisano_country_mall.glb")
+
+# The scanned mall replaces the procedural wings. Its covered walkway is a
+# separate object in the map GLB (Mall_Walkway) precisely so it survives this.
+const PROCEDURAL_MALL_NODE := "Gaisano Country Mall"
+# Centre of OSM way 93839848, the named mall footprint: 100.5 x 93.0 m.
+const MALL_CENTRE := Vector3(-104.6, 0.0, -568.4)
+# The asset is normalised to a ~1 unit box, so this is metres per unit. At 100
+# the roof lands at 13-16 m and the entrance tower at 30 m, which matches the
+# surveyed 16.4 m eaves.
+const MALL_SCALE := 100.0
+# The model faces +Z; the avenue runs at bearing 80.7 degrees and the mall
+# fronts onto it.
+const MALL_YAW_DEGREES := 80.7
 
 # Gov. M. Cuenco Ave runs at bearing 80.7 degrees, which is this heading in
 # Godot: nose down the avenue, away from Gaisano.
@@ -78,8 +92,62 @@ func _ready() -> void:
 	# Wait for the map colliders to register, then plant NPCs on the sidewalk.
 	await get_tree().physics_frame
 	await get_tree().physics_frame
+	await _place_country_mall()
 	_spawn_street_npcs()
 	_spawn_vehicles()
+
+
+## Swaps the procedural mall wings for the scanned asset.
+##
+## Nothing here assumes where the asset's origin sits. It is dropped at the
+## footprint centre and then shifted by the difference between its own lowest
+## vertex and the ground, so it lands on the road surface rather than hovering
+## over it or sinking into it, whatever the exporter chose for the origin.
+func _place_country_mall() -> void:
+	var procedural := find_child(PROCEDURAL_MALL_NODE, true, false) as Node3D
+	if procedural == null:
+		push_warning("procedural mall '%s' not found; skipping the swap" % PROCEDURAL_MALL_NODE)
+		return
+	# Hide it *and* take its collision out, or the ground probe below would
+	# find the old roof and stack the new mall on top of it.
+	procedural.visible = false
+	for body in procedural.find_children("*", "StaticBody3D", true, false):
+		for shape in body.find_children("*", "CollisionShape3D", true, false):
+			(shape as CollisionShape3D).disabled = true
+	await get_tree().physics_frame
+
+	var mall := CountryMallAsset.instantiate() as Node3D
+	mall.name = "GaisanoCountryMallAsset"
+	mall.scale = Vector3.ONE * MALL_SCALE
+	mall.rotation.y = deg_to_rad(MALL_YAW_DEGREES)
+	add_child(mall)
+
+	var ground_y := _raycast_ground_y(MALL_CENTRE.x, MALL_CENTRE.z)
+	mall.global_position = Vector3(MALL_CENTRE.x, ground_y, MALL_CENTRE.z)
+	var lowest := _lowest_visual_point(mall)
+	if is_finite(lowest):
+		mall.global_position.y += ground_y - lowest
+
+	for node in mall.find_children("*", "MeshInstance3D", true, false):
+		(node as MeshInstance3D).create_trimesh_collision()
+
+	print("BANILAD_MALL_PLACED ground=%.3f base_offset=%.3f final_y=%.3f" % [
+		ground_y, ground_y - lowest, mall.global_position.y,
+	])
+
+
+## Lowest point of every mesh the node owns, in world space.
+func _lowest_visual_point(root_node: Node3D) -> float:
+	var lowest := INF
+	for node in root_node.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := node as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
+		var bounds := mesh_instance.get_aabb()
+		var to_world := mesh_instance.global_transform
+		for corner in 8:
+			lowest = minf(lowest, (to_world * bounds.get_endpoint(corner)).y)
+	return lowest
 
 
 ## Parked on the carriageway just down the avenue from the spawn, so the first

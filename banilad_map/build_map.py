@@ -1212,10 +1212,14 @@ def build_central_bloc(batch, mats, rings):
     return built
 
 
-def build_country_mall(solid, lot_batch, mats, rings):
+def build_country_mall(solid, lot_batch, walk_batch, mats, rings):
     """Arcaded wings around the open car park, plus the covered walkway.
 
     `rings` maps OSM way id to footprint for every part of the complex.
+
+    The walkway goes into its own batch because the wings can be swapped for a
+    scanned asset at runtime (see banilad_city.gd), and the walkway has to
+    survive that: it is not in frame in any photo of the mall.
     """
     wings = 0
     tallest = None
@@ -1289,9 +1293,9 @@ def build_country_mall(solid, lot_batch, mats, rings):
             for side in (-width * 0.42, width * 0.42):
                 v, f = box(px + nx * side, py + ny * side,
                            Z_BUILDING_BASE, MALL_WALKWAY_HEIGHT, 0.16, 0.16)
-                solid.add(v, f, mats["Mall_Trim"])
+                walk_batch.add(v, f, mats["Mall_Trim"])
         v, f = raised_ribbon([a, b], width, MALL_WALKWAY_HEIGHT, 0.5)
-        solid.add(v, f, mats["Mall_Walkway"])
+        walk_batch.add(v, f, mats["Mall_Walkway"])
         v, f = ribbon([a, b], width * 0.85, 0.06)
         lot_batch.add(v, f, mats["Sidewalk"])
 
@@ -1301,12 +1305,12 @@ def build_country_mall(solid, lot_batch, mats, rings):
         ang = math.atan2(wy, wx)
         eaves = (tallest[0] if tallest else 10.6) + MALL_PEDIMENT_RISE
         v, f = box(px, py, Z_BUILDING_BASE, eaves, 8.5, 5.5, ang)
-        solid.add(v, f, mats["Mall_Wall"])
+        walk_batch.add(v, f, mats["Mall_Wall"])
         crown = oriented_rect((px, py), (math.cos(ang), math.sin(ang)), 8.5, 5.5)
         v, f = band_ring(crown, eaves - 0.6, eaves, offset=0.3)
-        solid.add(v, f, mats["Mall_Trim"])
+        walk_batch.add(v, f, mats["Mall_Trim"])
         v, f, _rise = hip_roof(crown, eaves, overhang=1.2)
-        solid.add(v, f, mats["Mall_Roof_Dark"])
+        walk_batch.add(v, f, mats["Mall_Roof_Dark"])
 
     log("Country Mall: {:d} surveyed wings, {:d} parking stripes, "
         "{:.0f} m covered walkway".format(wings, stripes, walk_length))
@@ -1841,8 +1845,10 @@ def main():
 
     mall_batch = MeshBatch()
     mall_lot = MeshBatch()
-    build_country_mall(mall_batch, mall_lot, mats, landmark_rings)
+    mall_walk = MeshBatch()
+    build_country_mall(mall_batch, mall_lot, mall_walk, mats, landmark_rings)
     mall_batch.to_object("Gaisano Country Mall", col_landmarks)
+    mall_walk.to_object("Mall_Walkway", col_landmarks)
 
     bloc_batch = MeshBatch()
     build_central_bloc(bloc_batch, mats, landmark_rings)

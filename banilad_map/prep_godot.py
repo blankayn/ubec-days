@@ -46,6 +46,7 @@ STRUCTURAL_MESHES = {
     "Ground", "Landuse", "Water", "Roads_Major", "Roads_Minor", "Footways",
     "Sidewalks", "Markings", "Buildings", "Buildings_Infill", "Windows",
     "Props_Solid", "Props_Foliage", "Mall_Car_Park", "Roads_Collision",
+    "Mall_Walkway",
 }
 
 # Godot only honours these when they are the very end of the node name.

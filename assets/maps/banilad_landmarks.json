@@ -72,13 +72,13 @@
   {
     "name": "Gaisano Country Mall",
     "godot_position": [
-      -87.35,
+      -98.34,
       0.0,
       -519.4
     ],
-    "roof_height": 16.4,
+    "roof_height": 12.3,
     "footprint": [
-      182.8,
+      160.8,
       193.4
     ],
     "key": true

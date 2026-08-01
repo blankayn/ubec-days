@@ -12,6 +12,25 @@ const PATH_TO := Vector3(-2.68, 0.5, -338.69)
 const SETTLE_FRAMES := 90
 const NAV_TIMEOUT_FRAMES := 1200
 
+# Z_ROAD_COLLISION in build_map.py: the single flat plane physics drives on.
+const ROAD_COLLISION_Y := 0.13
+const ROAD_COLLISION_TOLERANCE := 0.02
+
+# Two collision surfaces closer together than this are what a wheel ray flips
+# between from frame to frame.
+const CHATTER_BAND := 0.05
+
+# Road junctions that measurably had the bug before Roads_Collision existed:
+# (28, -682) presented surfaces 2 mm apart — exactly the layer_z stagger — and
+# (40, -696) presented three inside 4.6 cm. The spawn is included as the point
+# the player actually lands on.
+const ROAD_PROBES: Array[Vector2] = [
+	Vector2(12.79, -554.24),
+	Vector2(28.0, -682.0),
+	Vector2(40.0, -696.0),
+	Vector2(26.0, -604.0),
+]
+
 var _level: Node3D
 var _frames := 0
 var _failures: Array[String] = []
@@ -59,6 +78,13 @@ func _run_checks() -> void:
 		_fail("banilad_city.gd did not attach (check the log for a parse error)")
 	if _level.get_node_or_null("PauseMenu") == null:
 		_fail("PauseMenu was not built by banilad_city.gd")
+	if _level.get_node_or_null("HUD/CharacterPicker") == null:
+		_fail("CharacterPicker was not built by banilad_city.gd")
+	if _level.get_node_or_null("DialogueChoiceUI") == null:
+		_fail("DialogueChoiceUI was not built by banilad_city.gd")
+	for npc_name in ["BaniladMulet", "BaniladJholo", "BaniladEdwardWalker", "BaniladStreetWalker"]:
+		if _level.get_node_or_null(npc_name) == null:
+			_fail("%s NPC missing" % npc_name)
 
 	var player := _level.get_node_or_null("Player") as CharacterBody3D
 	if player == null:
@@ -71,6 +97,8 @@ func _run_checks() -> void:
 			_fail("player fell through the map (y = %.2f)" % pos.y)
 		if not player.is_on_floor():
 			_fail("player never landed on a collider")
+
+	_check_road_collision_is_flat()
 
 	var region := _level.get_node_or_null("NavigationRegion3D") as NavigationRegion3D
 	if region == null:
@@ -119,6 +147,70 @@ func _run_checks() -> void:
 			_fail("path does not reach the destination (%.1f m short)" % miss)
 	else:
 		_fail("navigation returned no usable path")
+
+
+## The road ribbons are drawn as separate overlapping strips nudged apart by
+## 2 mm so they do not z-fight. If those strips carry collision, a junction
+## presents a physics ray with a stack of surfaces millimetres apart and
+## VehicleWheel3D chatters between them. Only Roads_Collision should answer.
+func _check_road_collision_is_flat() -> void:
+	var space := _level.get_world_3d().direct_space_state
+	var carriageway_hits := 0
+	for probe in ROAD_PROBES:
+		var surfaces := _surfaces_below(space, probe.x, probe.y, 2.0, 0.02)
+		var above_ground: Array[float] = []
+		for y in surfaces:
+			if y > 0.02:
+				above_ground.append(y)
+		print("[smoke] road probe (%.2f, %.2f): surfaces above ground: %s" % [
+			probe.x, probe.y, str(above_ground),
+		])
+		# A raised sidewalk well above the road is fine. Two surfaces within
+		# millimetres of each other are the stacked-ribbon regression.
+		for i in range(above_ground.size() - 1):
+			var gap: float = absf(above_ground[i] - above_ground[i + 1])
+			if gap <= CHATTER_BAND:
+				_fail(
+					"(%.2f, %.2f) has collision surfaces %.3f m apart (%.3f / %.3f)"
+					% [probe.x, probe.y, gap, above_ground[i], above_ground[i + 1]]
+				)
+		for y in above_ground:
+			if absf(y - ROAD_COLLISION_Y) <= ROAD_COLLISION_TOLERANCE:
+				carriageway_hits += 1
+				break
+
+	print("[smoke] probes on the drive plane: %d of %d" % [
+		carriageway_hits, ROAD_PROBES.size(),
+	])
+	if carriageway_hits == 0:
+		_fail("no probe found the Roads_Collision drive plane at y=%.2f" % ROAD_COLLISION_Y)
+
+
+## Walks a ray down through everything it can hit, restarting just under each
+## contact, so coplanar-but-not-identical surfaces are all reported.
+func _surfaces_below(
+	space: PhysicsDirectSpaceState3D,
+	x: float,
+	z: float,
+	top: float,
+	bottom: float
+) -> Array[float]:
+	var found: Array[float] = []
+	var cursor := top
+	while cursor > bottom and found.size() < 24:
+		var query := PhysicsRayQueryParameters3D.create(
+			Vector3(x, cursor, z), Vector3(x, bottom, z)
+		)
+		query.collision_mask = 1
+		var hit := space.intersect_ray(query)
+		if hit.is_empty():
+			break
+		var y := float(hit.position.y)
+		found.append(y)
+		# Step below this contact by less than the 2 mm visual stagger, so a
+		# stack would still be resolved one surface at a time.
+		cursor = y - 0.001
+	return found
 
 
 func _fail(message: String) -> void:

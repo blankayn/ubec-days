@@ -78,6 +78,12 @@ Z_ROAD_MAJOR = 0.13
 Z_MARKING = 0.17
 Z_SIDEWALK = 0.15
 
+# Physics reads one flat plane instead of the layered visual ribbons (see
+# Roads_Collision below). Sitting it on the major-road surface keeps cars level
+# with the tarmac they mostly drive on: on minor roads they float at most 4 cm,
+# on major roads they sink at most 3 cm, neither visible at vehicle scale.
+Z_ROAD_COLLISION = Z_ROAD_MAJOR
+
 LAYER_STEP = 0.002
 LAYER_SLOTS = 16
 
@@ -1589,12 +1595,36 @@ def main():
         road_lines.append((pts, width, cls))
         road_count += 1
 
+    # One flat collision surface for every carriageway.
+    #
+    # The visual ribbons are nudged apart by layer_z so they do not z-fight,
+    # which at a junction stacks up to LAYER_SLOTS collidable surfaces inside
+    # 3 cm, with the ground plane a further 13 cm below. VehicleWheel3D rays
+    # would hit a different one of those every frame and chatter. Physics reads
+    # this single coplanar mesh instead; prep_godot.py marks the visual road
+    # meshes no-collide and exports this one as collision-only, so it never
+    # renders.
+    #
+    # Footways are skipped: at 5 cm they are close enough to the ground plane
+    # that walking on the ground underneath is indistinguishable.
+    road_collision = MeshBatch()
+    collision_ways = 0
+    for pts, width, cls in road_lines:
+        if cls in FOOT_ROADS:
+            continue
+        v, f = ribbon(pts, width, Z_ROAD_COLLISION)
+        road_collision.add(v, f, mats["Road_Major"])
+        collision_ways += 1
+
     roads_major.to_object("Roads_Major", col_roads)
     roads_minor.to_object("Roads_Minor", col_roads)
     footways.to_object("Footways", col_roads)
     sidewalks.to_object("Sidewalks", col_roads)
     markings.to_object("Markings", col_roads)
+    road_collision.to_object("Roads_Collision", col_roads)
     log("road ways: {:d}".format(road_count))
+    log("drive collision ways: {:d} (flat at z={:.3f})".format(
+        collision_ways, Z_ROAD_COLLISION))
 
     # --- Buildings ---------------------------------------------------------
     building_batch = MeshBatch()

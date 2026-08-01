@@ -137,8 +137,9 @@ concrete with charcoal glass, **no saturated blue**.
 
 Working and verified:
 
-- Map builds clean: **840 buildings, 143,477 verts / 162,875 tris**, 76
-  materials verified, GLB **8.39 MB**, 110 landmarks (19 key).
+- Map builds clean: **840 buildings, 153,419 verts / 170,567 tris**, 76
+  materials verified, GLB **8.66 MB**, 110 landmarks (19 key). (Up from
+  143,477 / 162,875 / 8.39 MB — the difference is the 2a collision mesh.)
 - Godot re-imports cleanly; `banilad_city.tscn` instances the GLB as `Level`.
 - Menu entry **"BANILAD · Real Street Map"** (`main_menu.gd:153`) loads it.
 - All 10 previews current.
@@ -202,14 +203,25 @@ scripts therefore `preload()` the pause menu instead. `banilad_smoke_test.gd`
 now asserts the root script attached.
 
 ### Milestone 2 — Drivable vehicles
-- **2a. Fix road collision first — blocks physics wheels.** Roads are separate
-  overlapping ribbons nudged by `layer_z(base,i) = base + (i%16)*0.002`. At a
-  junction that stacks **16 collidable surfaces across 3 cm**, with the
-  collidable ground plane 13 cm below (ground `0.0`, minor road `0.09–0.12`,
-  major `0.13–0.16`, sidewalk `0.15` + 0.15 kerb). `VehicleWheel3D` will
-  chatter. Emit a single flat `Roads_Collision` mesh from the `road_lines`
-  already collected in `build_map.py:main()`; add the visual road meshes to
-  `NO_COLLIDE` in `prep_godot.py`.
+- **✅ 2a. Road collision — DONE.** `build_map.py` now emits `Roads_Collision`,
+  one flat mesh at `Z_ROAD_COLLISION` (= `Z_ROAD_MAJOR`, 0.13) built from the
+  1125 non-footway entries in `road_lines`. `prep_godot.py` exports it as
+  **`-colonly`** (Godot drops the mesh, keeps the shape, so it never renders)
+  and moves `Roads_Major`, `Roads_Minor` and `Footways` into `NO_COLLIDE`.
+  - Measured, not assumed. Sweeping a 160 × 400 m window of the corridor for
+    points with two collision surfaces within 5 cm — the gap a wheel ray flips
+    between — gives **294 before, 42 after**. `(28, -682)` presented two
+    surfaces **2 mm** apart (exactly the `layer_z` stagger); `(40, -696)` had
+    three inside 4.6 cm. Both are now a single plane.
+  - Cost: +9,942 tris, GLB 8.39 → 8.66 MB. Player rest height dropped
+    1.06 → 1.03 (it used to stand on the topmost stacked ribbon).
+  - ⚠️ **All 42 survivors are sidewalks**, at y ≈ 0.30–0.32 — `Sidewalks` uses
+    the same `layer_z` stagger and still carries its own collision, so
+    overlapping slabs at junctions sit ~4 mm apart. No road-level stacking is
+    left. Harmless on foot (`CharacterBody3D` slides, it does not raycast per
+    wheel) but a car mounting a kerb would chatter. The same fix applies —
+    a flat `Sidewalks_Collision` — but it moves the walkable surface and so
+    changes the 5a navmesh bake, which is why it was not bundled in here.
 - **2b.** `scripts/vehicle_body.gd` — `VehicleBody3D` + 4 `VehicleWheel3D`,
   reusing the 4 `street_car*.glb` + 2 `jeepney_*.glb`. Wheels aren't separate
   nodes; place them from the box dims in `street_vehicle_prop.gd:110-129`
@@ -294,7 +306,12 @@ All run as `--headless --path . --script res://<path>`:
 - `scripts/tools/third_person_smoke_test.gd` — builds a synthetic scene and
   asserts the interaction prompt, the `interact` action firing an
   `Interactable`, the UI lock, and the pause menu pausing the tree. Fast.
-- `scripts/tools/banilad_smoke_test.gd` — headless map assertions.
+- `scripts/tools/banilad_smoke_test.gd` — headless map assertions, plus the
+  road-collision guard: it walks a ray down through every surface at four
+  junctions that measurably had the stacking bug and fails if any two sit
+  within `CHATTER_BAND` (5 cm). Verified to fail on the pre-2a GLB — probes on
+  straight stretches passed on both, which is why the probe points are
+  specifically junctions.
 - `scripts/mechanics_smoke_test.gd:35-113` — **the only regression guard on the
   2710-line `school_building.gd`** (all 10 levels' slabs, corridors, elevator
   landings, stair collision). Keep these; cut only the horror asserts at

@@ -45,6 +45,10 @@ const BONE_MAP := {
 @export var turn_speed := 6.0
 @export var endpoint_pause := 2.4
 
+## Optional world-space patrol. When set before add_child / _ready, replaces
+## the default offset loop so Banilad (and other maps) can walk the avenue.
+var custom_waypoints: Array[Vector3] = []
+
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
 @onready var model_root: Node3D = $ModelRoot
 
@@ -66,8 +70,11 @@ func _ready() -> void:
 	floor_stop_on_slope = true
 	up_direction = Vector3.UP
 	safe_margin = 0.02
-	for offset in PATROL_OFFSETS:
-		_waypoints.append(global_position + offset)
+	if custom_waypoints.is_empty():
+		for offset in PATROL_OFFSETS:
+			_waypoints.append(global_position + offset)
+	else:
+		_waypoints = custom_waypoints.duplicate()
 	_build_edward()
 
 

@@ -1,9 +1,10 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/banilad_city.gd" id="1_map"]
 [ext_resource type="PackedScene" path="res://assets/maps/banilad_map.glb" id="2_level"]
 [ext_resource type="NavigationMesh" path="res://assets/maps/banilad_navmesh.res" id="3_navmesh"]
 [ext_resource type="Script" path="res://scripts/cblock_player.gd" id="4_player"]
+[ext_resource type="Script" path="res://scripts/banilad_hud.gd" id="5_hud"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_banilad"]
 sky_top_color = Color(0.21, 0.45, 0.68, 1)
@@ -83,6 +84,7 @@ far = 900.0
 
 [node name="HUD" type="CanvasLayer" parent="."]
 layer = 10
+script = ExtResource("5_hud")
 
 [node name="TopBar" type="ColorRect" parent="HUD"]
 offset_left = 20.0
@@ -109,7 +111,7 @@ offset_right = 690.0
 offset_bottom = 66.0
 theme_override_colors/font_color = Color(0.7, 0.8, 0.87, 1)
 theme_override_font_sizes/font_size = 14
-text = "WASD move  |  Mouse orbit  |  Shift sprint  |  Space jump  |  E interact  |  Esc pause  |  M menu  |  R reset"
+text = "WASD move  |  Mouse orbit  |  Shift sprint  |  Space jump  |  E interact  |  Esc pause  |  C character  |  M menu  |  R reset"
 
 [node name="Interact" type="Label" parent="HUD"]
 anchors_preset = 7

@@ -12,7 +12,6 @@ var _subtitle: Label
 var _new_game_btn: Button
 var _cblock_btn: Button
 var _banilad_btn: Button
-var _playthrough_btn: Button
 var _chapter_btn: Button
 var _quit_btn: Button
 var _hint: Label
@@ -153,10 +152,6 @@ func _build_ui() -> void:
 	_banilad_btn = _make_clean_button("BANILAD · Real Street Map")
 	_banilad_btn.pressed.connect(_on_banilad_pressed)
 	column.add_child(_banilad_btn)
-
-	_playthrough_btn = _make_clean_button("Playthrough · Horror")
-	_playthrough_btn.pressed.connect(_on_playthrough_pressed)
-	column.add_child(_playthrough_btn)
 
 	_chapter_btn = _make_clean_button("Chapter Select 🔒")
 	_chapter_btn.pressed.connect(_on_chapter_select_pressed)
@@ -540,7 +535,6 @@ func _play_intro_motion() -> void:
 	_new_game_btn.modulate.a = 0.0
 	_cblock_btn.modulate.a = 0.0
 	_banilad_btn.modulate.a = 0.0
-	_playthrough_btn.modulate.a = 0.0
 	_chapter_btn.modulate.a = 0.0
 	_quit_btn.modulate.a = 0.0
 	_hint.modulate.a = 0.0
@@ -552,10 +546,9 @@ func _play_intro_motion() -> void:
 	tween.tween_property(_new_game_btn, "modulate:a", 1.0, 0.4).set_delay(0.25)
 	tween.tween_property(_cblock_btn, "modulate:a", 1.0, 0.4).set_delay(0.33)
 	tween.tween_property(_banilad_btn, "modulate:a", 1.0, 0.4).set_delay(0.41)
-	tween.tween_property(_playthrough_btn, "modulate:a", 1.0, 0.4).set_delay(0.49)
-	tween.tween_property(_chapter_btn, "modulate:a", 1.0, 0.4).set_delay(0.57)
-	tween.tween_property(_quit_btn, "modulate:a", 1.0, 0.4).set_delay(0.65)
-	tween.tween_property(_hint, "modulate:a", 1.0, 0.5).set_delay(0.75)
+	tween.tween_property(_chapter_btn, "modulate:a", 1.0, 0.4).set_delay(0.49)
+	tween.tween_property(_quit_btn, "modulate:a", 1.0, 0.4).set_delay(0.57)
+	tween.tween_property(_hint, "modulate:a", 1.0, 0.5).set_delay(0.67)
 
 
 func _on_new_game_pressed() -> void:
@@ -569,12 +562,6 @@ func _on_cblock_pressed() -> void:
 
 func _on_banilad_pressed() -> void:
 	_begin_scene_transition(BANILAD_SCENE, "Loading Banilad street map...")
-
-
-func _on_playthrough_pressed() -> void:
-	StoryManagerType.horror_playthrough = true
-	StoryManagerType.selected_starting_chapter = 1
-	_begin_scene_transition(UBEC_SCENE, "Loading UBEC horror map...")
 
 
 func _on_quit_pressed() -> void:

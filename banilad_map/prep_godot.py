@@ -29,19 +29,29 @@ LANDMARK_OUT = MAP_DIR / "banilad_landmarks.json"
 # Meshes the player must not walk through. Everything else stays decorative.
 # Flat decals and overhead foliage must not become collision, or the player
 # snags on painted lines and the navmesh grows floating polygons in tree tops.
+#
+# The carriageway ribbons are decorative too: build_map.py stacks them across
+# 3 cm to stop them z-fighting, which physics reads as a pile of overlapping
+# surfaces. Roads_Collision replaces the lot with one flat plane.
 NO_COLLIDE = {"Water", "Landuse", "Markings", "Windows", "Props_Foliage",
-              "Mall_Car_Park"}
+              "Mall_Car_Park", "Roads_Major", "Roads_Minor", "Footways"}
+
+# Exported for their collision only: Godot drops the mesh at import and keeps
+# the shape, so these never render.
+COLLISION_ONLY = {"Roads_Collision"}
 
 # The batched city meshes. Everything else is a named building worth exporting
 # to gameplay code as a landmark.
 STRUCTURAL_MESHES = {
     "Ground", "Landuse", "Water", "Roads_Major", "Roads_Minor", "Footways",
     "Sidewalks", "Markings", "Buildings", "Buildings_Infill", "Windows",
-    "Props_Solid", "Props_Foliage", "Mall_Car_Park",
+    "Props_Solid", "Props_Foliage", "Mall_Car_Park", "Roads_Collision",
 }
 
-# Godot only strips this suffix when it is the very end of the node name.
+# Godot only honours these when they are the very end of the node name.
+# "-col" keeps the mesh and adds a collider; "-colonly" keeps only the collider.
 COL_SUFFIX = "-col"
+COLONLY_SUFFIX = "-colonly"
 
 def srgb_to_linear(c):
     if c <= 0.04045:
@@ -157,19 +167,34 @@ def wants_collision(name):
     return name not in NO_COLLIDE
 
 
+def strip_col_suffix(name):
+    for suffix in (COLONLY_SUFFIX, COL_SUFFIX):
+        if name.endswith(suffix):
+            return name[:-len(suffix)]
+    return name
+
+
 def tag_collision():
     collided = 0
+    col_only = []
     skipped = []
     for obj in mesh_objects():
-        if obj.name.endswith(COL_SUFFIX):
+        if obj.name.endswith(COL_SUFFIX) or obj.name.endswith(COLONLY_SUFFIX):
             continue
-        if wants_collision(obj.name):
+        if obj.name in COLLISION_ONLY:
+            obj.name = obj.name + COLONLY_SUFFIX
+            col_only.append(obj.name)
+        elif wants_collision(obj.name):
             obj.name = obj.name + COL_SUFFIX
             collided += 1
         else:
             skipped.append(obj.name)
     log("tagged {:d} meshes with '{:s}'".format(collided, COL_SUFFIX))
+    log("collision-only (invisible): {:s}".format(
+        ", ".join(sorted(col_only)) if col_only else "none"))
     log("left decorative (no collision): {:s}".format(", ".join(sorted(skipped))))
+    if not col_only:
+        log("  WARNING: no Roads_Collision mesh found - rebuild with build_map.py")
 
 
 def check_palette():
@@ -205,7 +230,7 @@ def export_landmarks():
     """Record landmark centroids in Godot space (glTF +Y up)."""
     entries = []
     for obj in mesh_objects():
-        clean = obj.name[:-len(COL_SUFFIX)] if obj.name.endswith(COL_SUFFIX) else obj.name
+        clean = strip_col_suffix(obj.name)
         if clean in STRUCTURAL_MESHES:
             continue
         b = world_bounds(obj)

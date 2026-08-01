@@ -99,6 +99,7 @@ func _run_checks() -> void:
 			_fail("player never landed on a collider")
 
 	_check_road_collision_is_flat()
+	_check_vehicles()
 
 	var region := _level.get_node_or_null("NavigationRegion3D") as NavigationRegion3D
 	if region == null:
@@ -147,6 +148,56 @@ func _run_checks() -> void:
 			_fail("path does not reach the destination (%.1f m short)" % miss)
 	else:
 		_fail("navigation returned no usable path")
+
+
+## The parked cars have to land on the carriageway rather than through it or
+## on a kerb, and the interaction handover has to survive a round trip.
+func _check_vehicles() -> void:
+	var vehicles: Array[Node] = []
+	for child in _level.get_children():
+		if child.get_class() == "VehicleBody3D":
+			vehicles.append(child)
+	print("[smoke] parked vehicles: %d" % vehicles.size())
+	if vehicles.is_empty():
+		_fail("no drivable vehicles were spawned")
+		return
+
+	for vehicle in vehicles:
+		var body := vehicle as VehicleBody3D
+		var contacts := 0
+		for child in body.get_children():
+			var wheel := child as VehicleWheel3D
+			if wheel != null and wheel.is_in_contact():
+				contacts += 1
+		var upright := body.global_basis.y.dot(Vector3.UP)
+		print("[smoke]   %s y=%.2f wheels=%d upright=%.2f prompt='%s'" % [
+			body.name, body.global_position.y, contacts, upright,
+			body.get_interaction_prompt(),
+		])
+		if contacts < 4:
+			_fail("%s settled with %d of 4 wheels on the road" % [body.name, contacts])
+		if upright < 0.97:
+			_fail("%s did not settle upright (up.y = %.2f)" % [body.name, upright])
+		if body.get_interaction_prompt().is_empty():
+			_fail("%s offers no interaction prompt when parked" % body.name)
+
+	# Round-trip the handover the way pressing the interact key does.
+	var target := vehicles[0] as VehicleBody3D
+	var player := _level.get_node_or_null("Player") as CharacterBody3D
+	target.interact(player)
+	if not target.driver_active:
+		_fail("interacting with %s did not start driving it" % target.name)
+	if not player.is_stowed():
+		_fail("player was not stowed on entering a vehicle")
+	_level._exit_vehicle()
+	if target.driver_active:
+		_fail("exiting %s left it under driver control" % target.name)
+	if player.is_stowed():
+		_fail("player stayed stowed after exiting a vehicle")
+	var gap := player.global_position.distance_to(target.global_position)
+	print("[smoke] enter/exit round trip OK; player dropped %.2f m from the car" % gap)
+	if gap < 1.0 or gap > 6.0:
+		_fail("player exited %.2f m from the car (expected clear of it, not across the road)" % gap)
 
 
 ## The road ribbons are drawn as separate overlapping strips nudged apart by

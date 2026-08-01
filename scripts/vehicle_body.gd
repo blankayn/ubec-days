@@ -10,6 +10,11 @@ class_name DrivableVehicle
 
 const StreetVehicleProp := preload("res://scripts/street_vehicle_prop.gd")
 
+## Emitted when the player interacts with a parked vehicle. The map owns the
+## hand-over, since it is the thing that knows about the player and camera.
+signal enter_requested(player: Node)
+signal exit_requested()
+
 enum Kind { STREET_CAR, JEEPNEY }
 
 ## Measured from the GLBs: cars are 4.96 x 1.98 x 2.46 (L x H x W) and jeepneys
@@ -82,6 +87,13 @@ const STEER_FALLOFF_MIN := 0.34
 const UPRIGHT_DOT := 0.35
 const UPRIGHT_TORQUE := 5.5
 
+## Chase camera. It swings round behind the car rather than snapping, so a
+## slide or a spin reads as one.
+const CAMERA_HEIGHT := 1.35
+const CAMERA_PITCH := -0.18
+const CAMERA_FOLLOW_RATE := 3.6
+const CAMERA_DISTANCE := 7.4
+
 @export var kind: Kind = Kind.STREET_CAR
 @export var variant_index: int = 0
 @export var build_on_ready := true
@@ -94,6 +106,11 @@ var _visual_model: Node3D
 var _spec: Dictionary = {}
 var _wheels: Array[VehicleWheel3D] = []
 var _max_steer := 0.55
+
+var _camera_rig: Node3D = null
+var _spring_arm: SpringArm3D = null
+var _camera_yaw := 0.0
+var _restore_spring_length := 0.0
 
 
 func _ready() -> void:
@@ -112,7 +129,9 @@ func build() -> void:
 	# Well below the chassis box, which is what stops a hard corner rolling it.
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
 	center_of_mass = Vector3(0.0, -0.28, 0.0)
-	collision_layer = 4
+	# Layer 1 as well as the vehicle layer, so the player's interaction ray
+	# (mask 1) can find it and so bodies cannot walk through it.
+	collision_layer = 1 | 4
 	collision_mask = 1
 
 	_build_visual()
@@ -182,11 +201,59 @@ func _make_wheel(wheel_name: String, offset: Vector3, is_front: bool) -> Vehicle
 func _physics_process(delta: float) -> void:
 	if driver_active:
 		_apply_driver_input(delta)
+		_update_chase_camera(delta)
 	else:
 		engine_force = 0.0
 		steering = move_toward(steering, 0.0, STEER_RETURN_RATE * delta)
 		brake = BRAKE_FORCE
 	_apply_roll_recovery()
+
+
+## ---------------------------------------------------------------------
+## Chase camera: the map hands over the player's own orbit rig, so there is
+## one camera in the scene and no cut when getting in or out.
+## ---------------------------------------------------------------------
+
+func attach_camera(rig: Node3D, spring_arm: SpringArm3D) -> void:
+	_camera_rig = rig
+	_spring_arm = spring_arm
+	_camera_yaw = _heading_yaw()
+	if _spring_arm != null:
+		_restore_spring_length = _spring_arm.spring_length
+		_spring_arm.spring_length = CAMERA_DISTANCE
+		_spring_arm.add_excluded_object(get_rid())
+	_update_chase_camera(1.0)
+
+
+func detach_camera() -> void:
+	if _spring_arm != null:
+		_spring_arm.spring_length = _restore_spring_length
+		_spring_arm.remove_excluded_object(get_rid())
+	_camera_rig = null
+	_spring_arm = null
+
+
+func _update_chase_camera(delta: float) -> void:
+	if _camera_rig == null:
+		return
+	_camera_yaw = lerp_angle(
+		_camera_yaw, _heading_yaw(), minf(delta * CAMERA_FOLLOW_RATE, 1.0)
+	)
+	_camera_rig.global_position = global_position + Vector3.UP * CAMERA_HEIGHT
+	_camera_rig.global_rotation = Vector3(0.0, _camera_yaw, 0.0)
+	if _spring_arm != null:
+		_spring_arm.rotation.x = CAMERA_PITCH
+
+
+## Yaw of the nose, flattened. Read off the basis rather than global_rotation.y
+## so body roll and pitch do not leak into the camera.
+func _heading_yaw() -> float:
+	var forward := -global_basis.z
+	forward.y = 0.0
+	if forward.length_squared() < 0.0001:
+		return _camera_yaw
+	forward = forward.normalized()
+	return atan2(-forward.x, -forward.z)
 
 
 func _apply_driver_input(delta: float) -> void:
@@ -247,6 +314,36 @@ func set_driver_active(active: bool) -> void:
 	driver_active = active
 	if not active:
 		engine_force = 0.0
+
+
+## ---------------------------------------------------------------------
+## Interaction (Milestone 1b): duck-typed, exactly like interactable.gd, so
+## the player's probe picks a parked car up with no special-casing.
+## ---------------------------------------------------------------------
+
+func get_interaction_prompt() -> String:
+	if driver_active:
+		return ""
+	return "Drive the jeepney" if kind == Kind.JEEPNEY else "Drive"
+
+
+func interact(player: Node) -> void:
+	if driver_active:
+		return
+	enter_requested.emit(player)
+
+
+## Where to stand the player when they get out: alongside the driver's door,
+## clear of the body so they do not spawn inside it.
+func get_exit_position() -> Vector3:
+	var side := float(_spec["chassis_size"].x) * 0.5 + 0.9
+	var candidate := global_position + global_basis.x * -side
+	return candidate + Vector3.UP * 0.6
+
+
+## Seat position for hiding the player and for the chase camera's pivot.
+func get_seat_position() -> Vector3:
+	return global_position + Vector3.UP * float(_spec["chassis_y"])
 
 
 func get_speed_kph() -> float:

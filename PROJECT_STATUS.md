@@ -222,14 +222,39 @@ now asserts the root script attached.
     wheel) but a car mounting a kerb would chatter. The same fix applies —
     a flat `Sidewalks_Collision` — but it moves the walkable surface and so
     changes the 5a navmesh bake, which is why it was not bundled in here.
-- **2b.** `scripts/vehicle_body.gd` — `VehicleBody3D` + 4 `VehicleWheel3D`,
-  reusing the 4 `street_car*.glb` + 2 `jeepney_*.glb`. Wheels aren't separate
-  nodes; place them from the box dims in `street_vehicle_prop.gd:110-129`
-  (cars 4.6×1.55×1.9, jeepneys 6.2×2.15×2.15). Anti-flip: low centre of mass,
-  generous suspension travel, upright-assist above a roll threshold.
-- **2c.** Enter/exit via 1b. No entry/exit animations exist — snap into the
-  seat, hide the player mesh, hand the `CameraRig` SpringArm to the car, add a
-  `driving` branch to the existing state machine.
+- **✅ 2b. Drivable vehicle — DONE.** `scripts/vehicle_body.gd` builds a
+  `VehicleBody3D` + 4 `VehicleWheel3D` on the existing `assets/psx-vehicles`
+  models. Wheel positions come from the **measured** GLB bounds (cars
+  4.96 × 1.98 × 2.46, jeepneys 6.32 × 2.72 × 2.72, both on y = 0) — the box
+  dims quoted in `street_vehicle_prop.gd` are a deliberately smaller
+  player-safe hull, not the model. AWD: rear-drive spins out on kerbed OSM
+  geometry.
+  - **Suspension must be sized for this project's 18 m/s² gravity**, not the
+    9.8 Godot's defaults assume. Godot's spring force is proportional to
+    `stiffness × compression × mass`, so holding the car up needs a compression
+    of `gravity / (4 × stiffness)`. At 9.8-era stiffness both vehicles bottomed
+    out — the car rested **0.159 m into the road** — and lost most of their
+    traction with it. 64 (car) / 56 (jeepney) settle within 4 and 9 cm of the
+    height their baked wheels are drawn at.
+  - ⚠️ **A positive `engine_force` accelerates a `VehicleBody3D` toward +Z**,
+    the opposite of the −Z forward convention every other node uses. Godot
+    builds each wheel's drive axis as `axle × direction` = +Z and never flips
+    it; verified on a bare `VehicleBody3D` with no script (+900 → **+15.67 m in
+    Z**). The first version assumed −Z, so its own "rolling backwards" branch
+    braked the car it was accelerating and it crawled 1.5 m at 2 km/h.
+    `ENGINE_FORCE_SIGN` negates the throttle instead of inverting the node, so
+    the nose stays at −Z for the chase camera. **The steering sign is not
+    inverted** — it was asserted, not assumed.
+- **✅ 2c. Enter / exit — DONE.** Parked cars are picked up by the 1b probe by
+  duck-typing (`get_interaction_prompt` / `interact`), so they needed
+  `collision_layer = 1 | 4` to be visible to a mask-1 ray. `E` hands over:
+  `cblock_player.set_stowed(true)` hides the body, disables its collision and
+  **stops it writing to the camera rig** (`set_camera_enabled`), and the car
+  takes the same `CameraRig`/`SpringArm3D` for a chase camera that lerps behind
+  the nose. `E` again gets out beside the driver's door. Three vehicles park on
+  Cuenco Ave near the spawn.
+  - No entry/exit animations exist, so it snaps. Mouse-orbit while driving is
+    not wired — the chase camera is locked behind the car.
 
 ### Milestone 3 — Remove horror and rebrand
 Horror is far less entangled than it looks: **no `.tscn` references any horror
@@ -303,6 +328,9 @@ All run as `--headless --path . --script res://<path>`:
 
 - `scripts/tools/input_map_smoke_test.gd` — every action exists and a realistic
   device event still matches it (guards the device-tag trap in §5, 1a).
+- `scripts/tools/vehicle_smoke_test.gd` — both vehicle kinds settle upright on
+  four wheels at the height their model is drawn at, pull away under throttle,
+  stop under the handbrake, and **steer left when left is pressed**.
 - `scripts/tools/third_person_smoke_test.gd` — builds a synthetic scene and
   asserts the interaction prompt, the `interact` action firing an
   `Interactable`, the UI lock, and the pause menu pausing the tree. Fast.

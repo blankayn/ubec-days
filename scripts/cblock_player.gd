@@ -120,6 +120,8 @@ var _character_label := "Character"
 var _controls_enabled := true
 var _last_prompt := ""
 var _interact_key_label := "E"
+var _camera_enabled := true
+var _stowed := false
 
 
 func _ready() -> void:
@@ -289,7 +291,7 @@ func _update_camera_recenter(input_vector: Vector2, delta: float) -> void:
 
 
 func _update_camera_transform() -> void:
-	if camera_rig == null:
+	if camera_rig == null or not _camera_enabled:
 		return
 	camera_rig.global_position = global_position + Vector3.UP * camera_target_height
 	camera_rig.global_rotation = Vector3(0.0, _camera_yaw, 0.0)
@@ -414,6 +416,36 @@ func set_ui_locked(locked: bool) -> void:
 
 func is_ui_locked() -> bool:
 	return not _controls_enabled
+
+
+## Hands the orbit rig to something else — a vehicle's chase camera — without
+## the player fighting it back every physics frame.
+func set_camera_enabled(enabled: bool) -> void:
+	_camera_enabled = enabled
+
+
+## Parks the player out of the world while they are driving (Milestone 2c).
+## Physics and collision stop so the body cannot be shoved around by the car
+## it is riding in, and the mouse stays captured because the vehicle wants it.
+func set_stowed(stowed: bool) -> void:
+	if _stowed == stowed:
+		return
+	_stowed = stowed
+	_controls_enabled = not stowed
+	_camera_enabled = not stowed
+	visible = not stowed
+	collision_shape.disabled = stowed
+	set_physics_process(not stowed)
+	if stowed:
+		velocity = Vector3.ZERO
+		_set_prompt("")
+	else:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		_update_camera_transform()
+
+
+func is_stowed() -> bool:
+	return _stowed
 
 
 func get_character_id() -> String:

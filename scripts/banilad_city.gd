@@ -14,6 +14,12 @@ const MuletNpcPropScript := preload("res://scripts/mulet_npc_prop.gd")
 const JholoNpcPropScript := preload("res://scripts/jholo_npc_prop.gd")
 const EdwardNpcPropScript := preload("res://scripts/edward_npc_prop.gd")
 const CBlockEdwardScene := preload("res://assets/npcs/cblock_edward_npc.tscn")
+const DrivableVehicleScript := preload("res://scripts/vehicle_body.gd")
+
+# Gov. M. Cuenco Ave runs at bearing 80.7 degrees, which is this heading in
+# Godot: nose down the avenue, away from Gaisano.
+const AVENUE_YAW := -0.162
+const AVENUE_FORWARD := Vector3(0.161, 0.0, -0.987)
 
 # On Gov. M. Cuenco Avenue, roughly 120 m south of Gaisano Country Mall.
 const SPAWN_POSITION := Vector3(12.79, 1.2, -554.24)
@@ -29,6 +35,8 @@ const FALL_LIMIT := -20.0
 const LANDMARK_RANGE := 90.0
 
 @onready var player: CharacterBody3D = $Player
+@onready var camera_rig: Node3D = $CameraRig
+@onready var spring_arm: SpringArm3D = $CameraRig/SpringArm3D
 @onready var hud: CanvasLayer = $HUD
 @onready var prompt_label: Label = $HUD/Prompt
 @onready var interact_label: Label = $HUD/Interact
@@ -45,6 +53,8 @@ var _picker_open := false
 var _picker_overlay: ColorRect
 var _character_buttons: Dictionary = {}
 var _selected_preview_id := ""
+var _vehicles: Array = []
+var _active_vehicle = null
 
 
 func _ready() -> void:
@@ -69,6 +79,75 @@ func _ready() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	_spawn_street_npcs()
+	_spawn_vehicles()
+
+
+## Parked on the carriageway just down the avenue from the spawn, so the first
+## thing in front of the player is something they can drive.
+func _spawn_vehicles() -> void:
+	var layout := [
+		{"kind": DrivableVehicleScript.Kind.STREET_CAR, "variant": 0, "along": 9.0, "side": 2.6},
+		{"kind": DrivableVehicleScript.Kind.STREET_CAR, "variant": 2, "along": 26.0, "side": -3.0},
+		{"kind": DrivableVehicleScript.Kind.JEEPNEY, "variant": 0, "along": 44.0, "side": 2.4},
+	]
+	var right := Vector3(cos(AVENUE_YAW), 0.0, -sin(AVENUE_YAW))
+	for index in layout.size():
+		var entry: Dictionary = layout[index]
+		var spot := (
+			SPAWN_POSITION
+			+ AVENUE_FORWARD * float(entry["along"])
+			+ right * float(entry["side"])
+		)
+		var vehicle = DrivableVehicleScript.new()
+		vehicle.build_on_ready = false
+		vehicle.kind = entry["kind"]
+		vehicle.variant_index = int(entry["variant"])
+		# Dropped a little high so the suspension settles it onto the road.
+		vehicle.position = Vector3(spot.x, _raycast_ground_y(spot.x, spot.z) + 0.55, spot.z)
+		vehicle.rotation.y = AVENUE_YAW
+		add_child(vehicle)
+		vehicle.build()
+		vehicle.name = "BaniladVehicle%d" % index
+		vehicle.enter_requested.connect(_on_vehicle_enter_requested.bind(vehicle))
+		_vehicles.append(vehicle)
+
+
+func _on_vehicle_enter_requested(_who: Node, vehicle) -> void:
+	_enter_vehicle(vehicle)
+
+
+func _enter_vehicle(vehicle) -> void:
+	if _active_vehicle != null or vehicle == null:
+		return
+	_active_vehicle = vehicle
+	player.set_stowed(true)
+	player.global_position = vehicle.get_seat_position()
+	vehicle.attach_camera(camera_rig, spring_arm)
+	vehicle.set_driver_active(true)
+	_set_interact_prompt("")
+	_show_message("DRIVING  //  [%s] to get out" % _interact_key_name(), 3.0)
+
+
+func _exit_vehicle() -> void:
+	if _active_vehicle == null:
+		return
+	var vehicle = _active_vehicle
+	_active_vehicle = null
+	vehicle.set_driver_active(false)
+	vehicle.detach_camera()
+	player.global_position = vehicle.get_exit_position()
+	player.set_stowed(false)
+	_show_message("ON FOOT", 2.0)
+
+
+func _interact_key_name() -> String:
+	for event in InputMap.action_get_events(&"interact"):
+		var key_event := event as InputEventKey
+		if key_event != null:
+			var label := key_event.as_text_physical_keycode()
+			if not label.is_empty():
+				return label
+	return "E"
 
 
 func _build_pause_menu() -> void:
@@ -188,7 +267,15 @@ func _raycast_ground_y(x: float, z: float) -> float:
 
 
 func _physics_process(delta: float) -> void:
-	if player.global_position.y < FALL_LIMIT:
+	if _active_vehicle != null:
+		# The player is stowed and not falling anywhere; watch the car instead,
+		# and keep the body with it so getting out lands beside the vehicle.
+		if _active_vehicle.global_position.y < FALL_LIMIT:
+			_exit_vehicle()
+			_respawn()
+		else:
+			player.global_position = _active_vehicle.get_seat_position()
+	elif player.global_position.y < FALL_LIMIT:
 		_respawn()
 
 	# Landmark proximity does not need to run every physics tick.
@@ -203,6 +290,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.is_action_pressed(&"pause") or event.is_action_pressed(&"character_picker"):
 			if _dialogue_ui.has_method("dismiss"):
 				_dialogue_ui.dismiss()
+			get_viewport().set_input_as_handled()
+		return
+	# While driving, the player's own input is off, so the map owns the key
+	# that gets them back out.
+	if _active_vehicle != null:
+		if event.is_action_pressed(&"interact"):
+			_exit_vehicle()
 			get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed(&"character_picker"):
@@ -307,7 +401,7 @@ func _show_message(text: String, duration: float = 4.0) -> void:
 func _refresh_help_text() -> void:
 	help_label.text = (
 		"WASD move  |  Mouse orbit  |  Shift sprint  |  Space jump  |  "
-		+ "E interact  |  Esc pause  |  C character  |  M menu  |  R reset"
+		+ "E interact / drive  |  Space handbrake  |  Esc pause  |  C character  |  M menu"
 	)
 
 

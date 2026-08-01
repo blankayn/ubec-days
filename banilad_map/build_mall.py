@@ -81,6 +81,10 @@ CUPOLA_HEIGHT = 4.4
 PAVILION_SIZE = 15.0      # square towers closing each end of the frontage
 PAVILION_RISE = 4.6
 PAVILION_ARCH_WIDTH = 8.4
+# Pavilions flank the entrance. Without a reach limit one lands on the far
+# north-east corner of the south-east block, 91 m from the entrance and right
+# on the avenue, where it reads as a random house next to UC.
+PAVILION_REACH = 60.0
 
 PORTE_SIZE = 13.0         # detached entrance canopy out in the car park
 PORTE_HEIGHT = 5.6
@@ -662,15 +666,26 @@ def place_landmark_features(batch, rings):
                    main["eaves"])
     porte_cochere(batch, main["mid"], main["normal"], main["tangent"])
 
-    corners = sorted(edges, key=lambda e: along(e["mid"]))
-    for edge in (corners[0], corners[-1]):
-        if math.dist(edge["mid"], main["mid"]) < PAVILION_SIZE:
+    # A pavilion needs a wall long enough to stand on and has to flank the
+    # entrance, one either side. Taking the extreme edges of the whole frontage
+    # instead scatters them onto far-flung wings.
+    anchor = along(main["mid"])
+    candidates = [
+        e for e in edges
+        if e["length"] >= PAVILION_SIZE
+        and PAVILION_SIZE <= math.dist(e["mid"], main["mid"]) <= PAVILION_REACH
+    ]
+    placed = 0
+    for group, pick in ((lambda e: along(e["mid"]) < anchor, min),
+                        (lambda e: along(e["mid"]) > anchor, max)):
+        side = [e for e in candidates if group(e)]
+        if not side:
             continue
+        edge = pick(side, key=lambda e: along(e["mid"]))
         corner_pavilion(batch, edge["mid"], edge["normal"], edge["tangent"],
                         edge["eaves"])
-    log("landmark features: entrance + porte-cochere + %d pavilion(s)"
-        % sum(1 for e in (corners[0], corners[-1])
-              if math.dist(e["mid"], main["mid"]) >= PAVILION_SIZE))
+        placed += 1
+    log("landmark features: entrance + porte-cochere + %d pavilion(s)" % placed)
 
 
 def load_rings():

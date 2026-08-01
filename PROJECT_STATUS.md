@@ -215,13 +215,28 @@ now asserts the root script attached.
     three inside 4.6 cm. Both are now a single plane.
   - Cost: +9,942 tris, GLB 8.39 → 8.66 MB. Player rest height dropped
     1.06 → 1.03 (it used to stand on the topmost stacked ribbon).
-  - ⚠️ **All 42 survivors are sidewalks**, at y ≈ 0.30–0.32 — `Sidewalks` uses
-    the same `layer_z` stagger and still carries its own collision, so
-    overlapping slabs at junctions sit ~4 mm apart. No road-level stacking is
-    left. Harmless on foot (`CharacterBody3D` slides, it does not raycast per
-    wheel) but a car mounting a kerb would chatter. The same fix applies —
-    a flat `Sidewalks_Collision` — but it moves the walkable surface and so
-    changes the 5a navmesh bake, which is why it was not bundled in here.
+- **✅ 2a-2. Junction clipping — DONE** (found by driving it; the remaining 42
+  chatter points were the visible half of a worse bug).
+  - Sidewalks and lane markings were generated along each way's **whole
+    length**, so at every junction they carried straight over the crossing
+    road. For a sidewalk that is a **kerbed slab lying across the
+    carriageway** — a 0.15 m step the car hits, not just something that looks
+    wrong. It was plainly visible from the driver's seat.
+  - `clip_against_carriageways()` in `build_map.py` breaks a polyline wherever
+    it enters another road's tarmac, using a `SpatialIndex` of every
+    non-footway centreline built in a new first pass. `margin` is how far the
+    feature reaches either side of the line being tested, so a sidewalk clears
+    the road by its own half-width instead of stopping with half of itself
+    still over it. Runs under 2.5 m are dropped as slivers, and an uncrossed
+    line is handed back with its original vertices rather than a resampled
+    copy.
+  - **199 sidewalk lines broken at junctions**; geometry *fell* 170,567 →
+    165,299 tris. Chatter points in the survey window went **42 → 0**: the
+    sidewalk overlaps were the last source, so this closed 2a's open issue as
+    a side effect rather than needing a separate `Sidewalks_Collision`.
+  - 15 points in the window still have a kerb over the drive plane (0.09% of
+    samples), where a sidewalk runs alongside a road just inside the margin.
+    Not visible while driving; left alone.
 - **✅ 2b. Drivable vehicle — DONE.** `scripts/vehicle_body.gd` builds a
   `VehicleBody3D` + 4 `VehicleWheel3D` on the existing `assets/psx-vehicles`
   models. Wheel positions come from the **measured** GLB bounds (cars

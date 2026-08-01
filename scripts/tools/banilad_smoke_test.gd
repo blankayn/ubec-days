@@ -225,10 +225,21 @@ func _check_road_collision_is_flat() -> void:
 					"(%.2f, %.2f) has collision surfaces %.3f m apart (%.3f / %.3f)"
 					% [probe.x, probe.y, gap, above_ground[i], above_ground[i + 1]]
 				)
+		var on_drive_plane := false
 		for y in above_ground:
 			if absf(y - ROAD_COLLISION_Y) <= ROAD_COLLISION_TOLERANCE:
+				on_drive_plane = true
 				carriageway_hits += 1
 				break
+		# Sidewalks are generated along each way's whole length; unclipped they
+		# carry their kerb straight over the crossing road, which the car hits.
+		if on_drive_plane:
+			for y in above_ground:
+				if y > ROAD_COLLISION_Y + ROAD_COLLISION_TOLERANCE:
+					_fail(
+						"something sits %.2f m above the carriageway at (%.2f, %.2f)"
+						% [y - ROAD_COLLISION_Y, probe.x, probe.y]
+					)
 
 	print("[smoke] probes on the drive plane: %d of %d" % [
 		carriageway_hits, ROAD_PROBES.size(),

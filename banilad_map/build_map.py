@@ -453,6 +453,91 @@ def offset_polyline(pts, distance):
     return [(p[0] + o[0] * sign, p[1] + o[1] * sign) for p, o in zip(pts, offsets)]
 
 
+def polyline_arc_table(pts):
+    table = [0.0]
+    for i in range(len(pts) - 1):
+        table.append(table[-1] + math.dist(pts[i], pts[i + 1]))
+    return table
+
+
+def point_at_arc(pts, table, s):
+    for i in range(len(pts) - 1):
+        if s <= table[i + 1] or i == len(pts) - 2:
+            span = table[i + 1] - table[i]
+            t = 0.0 if span <= 1e-9 else (s - table[i]) / span
+            t = min(1.0, max(0.0, t))
+            a, b = pts[i], pts[i + 1]
+            return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+    return pts[-1]
+
+
+def sub_polyline(pts, table, s0, s1):
+    """The piece of a polyline between two arc lengths, original corners kept."""
+    out = [point_at_arc(pts, table, s0)]
+    for i in range(1, len(pts) - 1):
+        if s0 < table[i] < s1:
+            out.append(pts[i])
+    out.append(point_at_arc(pts, table, s1))
+    return dedupe(out)
+
+
+def on_other_carriageway(x, y, index, way_index, margin):
+    for p0, p1, half, owner in index.near(x, y):
+        if owner == way_index:
+            continue
+        distance, _ = point_segment_distance(x, y, p0, p1)
+        if distance <= half + margin:
+            return True
+    return False
+
+
+def clip_against_carriageways(line, index, way_index, margin,
+                              step=1.5, min_run=2.5):
+    """Break a polyline wherever it runs over another road's tarmac.
+
+    Sidewalks and lane markings are generated along a way's whole length, so
+    at a junction they carry straight over the crossing road. For a sidewalk
+    that means a kerbed slab lying across the carriageway -- a step the car
+    hits, not just something that looks wrong.
+
+    `margin` is how far the feature reaches either side of the line being
+    tested, so a sidewalk clears the tarmac by its own half-width rather than
+    stopping with half of itself still over the road. Runs shorter than
+    `min_run` are dropped as slivers.
+    """
+    pts = dedupe(line)
+    if len(pts) < 2:
+        return []
+    table = polyline_arc_table(pts)
+    total = table[-1]
+    if total <= 1e-6:
+        return []
+
+    steps = max(1, int(math.ceil(total / step)))
+    runs = []
+    start = None
+    last = 0.0
+    for k in range(steps + 1):
+        s = total * k / steps
+        px, py = point_at_arc(pts, table, s)
+        if on_other_carriageway(px, py, index, way_index, margin):
+            if start is not None and last - start >= min_run:
+                runs.append((start, last))
+            start = None
+        else:
+            if start is None:
+                start = s
+            last = s
+    if start is not None and last - start >= min_run:
+        runs.append((start, last))
+
+    # Nothing crossed it: hand back the original vertices rather than a
+    # resampled copy, so untouched streets keep their original vertex count.
+    if len(runs) == 1 and runs[0][0] <= 1e-6 and runs[0][1] >= total - 1e-6:
+        return [pts]
+    return [sub_polyline(pts, table, a, b) for a, b in runs]
+
+
 def offset_ring(pts, distance):
     """Offset a closed ring, mitring every corner including the seam.
 
@@ -1545,6 +1630,9 @@ def main():
     road_lines = []      # (points, width, class) reused for props
     road_count = 0
 
+    # Pass 1: resolve every centreline and width up front, so pass 2 can ask
+    # "is this point on another road's tarmac?" while it builds.
+    resolved = []
     for el in ways:
         tags = el.get("tags", {})
         cls = tags.get("highway")
@@ -1561,7 +1649,19 @@ def main():
                 width = max(width, lanes * 3.4)
         except ValueError:
             pass
+        resolved.append((pts, width, cls))
 
+    carriageways = SpatialIndex()
+    for way_index, (pts, width, cls) in enumerate(resolved):
+        if cls in FOOT_ROADS:
+            continue
+        for i in range(len(pts) - 1):
+            carriageways.add_segment(
+                pts[i], pts[i + 1], (pts[i], pts[i + 1], width * 0.5, way_index)
+            )
+
+    clipped_walks = 0
+    for way_index, (pts, width, cls) in enumerate(resolved):
         if cls in MAJOR_ROADS:
             target, z, mat = roads_major, Z_ROAD_MAJOR, mats["Road_Major"]
         elif cls in FOOT_ROADS:
@@ -1574,22 +1674,38 @@ def main():
         target.add(verts, faces, mat)
 
         # Kerbed sidewalks and centre lines only on driveable streets.
+        #
+        # Both are generated along the way's whole length, so without clipping
+        # they run straight over every road that crosses them -- a raised kerb
+        # slab lying across the avenue, which is a step the car hits as well as
+        # something that looks wrong. Breaking them where they enter another
+        # carriageway leaves the gap a real junction has.
         if cls in MAJOR_ROADS or cls in ("unclassified", "residential"):
             walk_offset = width * 0.5 + SIDEWALK_WIDTH * 0.5
             for side in (walk_offset, -walk_offset):
                 line = offset_polyline(pts, side)
-                if len(line) >= 2:
-                    v, f = raised_ribbon(line, SIDEWALK_WIDTH,
+                if len(line) < 2:
+                    continue
+                runs = clip_against_carriageways(
+                    line, carriageways, way_index, SIDEWALK_WIDTH * 0.5 + 0.15
+                )
+                if len(runs) > 1:
+                    clipped_walks += 1
+                for run in runs:
+                    v, f = raised_ribbon(run, SIDEWALK_WIDTH,
                                          layer_z(Z_SIDEWALK, road_count), KERB_HEIGHT)
                     sidewalks.add(v, f, mats["Sidewalk"])
 
         if cls in MAJOR_ROADS:
-            v, f = dashed_line(pts, layer_z(Z_MARKING, road_count))
-            markings.add(v, f, mats["Marking_White"])
+            for run in clip_against_carriageways(pts, carriageways, way_index, 0.3):
+                v, f = dashed_line(run, layer_z(Z_MARKING, road_count))
+                markings.add(v, f, mats["Marking_White"])
             for side in (width * 0.5 - 0.5, -(width * 0.5 - 0.5)):
                 edge = offset_polyline(pts, side)
-                if len(edge) >= 2:
-                    v, f = ribbon(edge, 0.18, layer_z(Z_MARKING, road_count))
+                if len(edge) < 2:
+                    continue
+                for run in clip_against_carriageways(edge, carriageways, way_index, 0.3):
+                    v, f = ribbon(run, 0.18, layer_z(Z_MARKING, road_count))
                     markings.add(v, f, mats["Marking_Yellow"])
 
         road_lines.append((pts, width, cls))
@@ -1623,6 +1739,7 @@ def main():
     markings.to_object("Markings", col_roads)
     road_collision.to_object("Roads_Collision", col_roads)
     log("road ways: {:d}".format(road_count))
+    log("sidewalks broken at junctions: {:d}".format(clipped_walks))
     log("drive collision ways: {:d} (flat at z={:.3f})".format(
         collision_ways, Z_ROAD_COLLISION))
 

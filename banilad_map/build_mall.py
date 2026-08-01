@@ -664,7 +664,8 @@ def place_landmark_features(batch, rings):
 
     entrance_block(batch, main["mid"], main["normal"], main["tangent"],
                    main["eaves"])
-    porte_cochere(batch, main["mid"], main["normal"], main["tangent"])
+    # Porte-cochere intentionally omitted — freestanding car-park hut cluttered
+    # the Banilad plaza and is not part of the playable street read.
 
     # A pavilion needs a wall long enough to stand on and has to flank the
     # entrance, one either side. Taking the extreme edges of the whole frontage
@@ -685,7 +686,7 @@ def place_landmark_features(batch, rings):
         corner_pavilion(batch, edge["mid"], edge["normal"], edge["tangent"],
                         edge["eaves"])
         placed += 1
-    log("landmark features: entrance + porte-cochere + %d pavilion(s)" % placed)
+    log("landmark features: entrance + %d pavilion(s)" % placed)
 
 
 def load_rings():

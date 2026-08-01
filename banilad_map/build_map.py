@@ -788,7 +788,10 @@ UC_WING_DEPTH = 13.5          # depth of the occupied ring around the courtyard
 UC_FACADE_BOW = 3.2           # how far the curtain wall bulges toward the avenue
 
 MALL_WALKWAY_HEIGHT = 3.6      # underside of the covered walkway canopy
-MALL_PEDIMENT_RISE = 3.4       # how far the entrance feature tops the eaves
+# The canopy is shifted off its surveyed line to run out from the mall
+# entrance, taking over the spot the porte-cochere used to occupy. Blender XY
+# metres; the surveyed way sits ~13 m south of the entrance axis.
+MALL_WALKWAY_OFFSET = (2.9, -13.4)
 
 # --- Cebu IT Park ----------------------------------------------------------
 # Ayala Malls Central Bloc opened after the aerial imagery most sources still
@@ -1222,7 +1225,6 @@ def build_country_mall(solid, lot_batch, walk_batch, mats, rings):
     survive that: it is not in frame in any photo of the mall.
     """
     wings = 0
-    tallest = None
     for way_id, (ground_h, upper_h, tiers) in sorted(MALL_WINGS.items()):
         ring = rings.get(way_id)
         if not ring or len(ring) < 3:
@@ -1231,8 +1233,6 @@ def build_country_mall(solid, lot_batch, walk_batch, mats, rings):
         _arcaded_wing(solid, mats, ring, ground_h, upper_h, roof_mat,
                       tiers=tiers)
         wings += 1
-        if tallest is None or upper_h > tallest[0]:
-            tallest = (upper_h, ring)
 
     # --- Car park ----------------------------------------------------------
     # The commercial parcel is the whole block; the wings are drawn on top of
@@ -1279,8 +1279,9 @@ def build_country_mall(solid, lot_batch, walk_batch, mats, rings):
     if walk and len(walk) >= 3:
         wcentre, waxis, whalf_u, whalf_v = min_area_rect(walk)
         wx, wy = waxis
-        a = (wcentre[0] - wx * whalf_u, wcentre[1] - wy * whalf_u)
-        b = (wcentre[0] + wx * whalf_u, wcentre[1] + wy * whalf_u)
+        ox, oy = MALL_WALKWAY_OFFSET
+        a = (wcentre[0] - wx * whalf_u + ox, wcentre[1] - wy * whalf_u + oy)
+        b = (wcentre[0] + wx * whalf_u + ox, wcentre[1] + wy * whalf_u + oy)
         walk_length = 2.0 * whalf_u
         width = max(3.0, 2.0 * whalf_v)
 
@@ -1299,30 +1300,12 @@ def build_country_mall(solid, lot_batch, walk_batch, mats, rings):
         v, f = ribbon([a, b], width * 0.85, 0.06)
         lot_batch.add(v, f, mats["Sidewalk"])
 
-        # Entrance pediment where the walkway meets the arcade: the gabled
-        # centrepiece that fronts the mall in the aerial.
-        px, py = a if _nearest_wing_distance(a, rings) < _nearest_wing_distance(b, rings) else b
-        ang = math.atan2(wy, wx)
-        eaves = (tallest[0] if tallest else 10.6) + MALL_PEDIMENT_RISE
-        v, f = box(px, py, Z_BUILDING_BASE, eaves, 8.5, 5.5, ang)
-        walk_batch.add(v, f, mats["Mall_Wall"])
-        crown = oriented_rect((px, py), (math.cos(ang), math.sin(ang)), 8.5, 5.5)
-        v, f = band_ring(crown, eaves - 0.6, eaves, offset=0.3)
-        walk_batch.add(v, f, mats["Mall_Trim"])
-        v, f, _rise = hip_roof(crown, eaves, overhang=1.2)
-        walk_batch.add(v, f, mats["Mall_Roof_Dark"])
+        # No entrance pediment. It stood at the inner end of the canopy and
+        # read as a windowless building stuck on the end of a walkway; the
+        # scanned mall's own entrance bay does that job now.
 
     log("Country Mall: {:d} surveyed wings, {:d} parking stripes, "
         "{:.0f} m covered walkway".format(wings, stripes, walk_length))
-
-
-def _nearest_wing_distance(point, rings):
-    """Distance from a point to the closest mall wing footprint vertex."""
-    best = 1e9
-    for way_id in MALL_WINGS:
-        for p in rings.get(way_id) or ():
-            best = min(best, math.dist(point, p))
-    return best
 
 
 # ---------------------------------------------------------------------------

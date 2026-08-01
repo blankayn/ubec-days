@@ -20,15 +20,16 @@ const CountryMallAsset := preload("res://assets/buildings/gaisano_country_mall.g
 # The scanned mall replaces the procedural wings. Its covered walkway is a
 # separate object in the map GLB (Mall_Walkway) precisely so it survives this.
 const PROCEDURAL_MALL_NODE := "Gaisano Country Mall"
-# Centre of OSM way 93839848, the named mall footprint: 100.5 x 93.0 m.
-const MALL_CENTRE := Vector3(-104.6, 0.0, -568.4)
-# The asset is normalised to a ~1 unit box, so this is metres per unit. At 100
-# the roof lands at 13-16 m and the entrance tower at 30 m, which matches the
-# surveyed 16.4 m eaves.
-const MALL_SCALE := 100.0
-# The model faces +Z; the avenue runs at bearing 80.7 degrees and the mall
-# fronts onto it.
-const MALL_YAW_DEGREES := 80.7
+# banilad_map/build_mall.py builds the mall at absolute map coordinates from
+# the surveyed OSM footprints, so it instances at the origin: no scale, no
+# rotation, and it is already sitting on z = 0 like the rest of the map.
+const MALL_CENTRE := Vector3.ZERO
+const MALL_SCALE := 1.0
+const MALL_YAW_DEGREES := 0.0
+# Where to probe for the ground. The asset instances at the origin, but the
+# building itself stands over here, so this is the spot that has to be level
+# with its base.
+const MALL_GROUND_PROBE := Vector2(-104.6, -568.4)
 
 # Gov. M. Cuenco Ave runs at bearing 80.7 degrees, which is this heading in
 # Godot: nose down the avenue, away from Gaisano.
@@ -122,7 +123,7 @@ func _place_country_mall() -> void:
 	mall.rotation.y = deg_to_rad(MALL_YAW_DEGREES)
 	add_child(mall)
 
-	var ground_y := _raycast_ground_y(MALL_CENTRE.x, MALL_CENTRE.z)
+	var ground_y := _raycast_ground_y(MALL_GROUND_PROBE.x, MALL_GROUND_PROBE.y)
 	mall.global_position = Vector3(MALL_CENTRE.x, ground_y, MALL_CENTRE.z)
 	var lowest := _lowest_visual_point(mall)
 	if is_finite(lowest):

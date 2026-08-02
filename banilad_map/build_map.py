@@ -788,10 +788,15 @@ UC_WING_DEPTH = 13.5          # depth of the occupied ring around the courtyard
 UC_FACADE_BOW = 3.2           # how far the curtain wall bulges toward the avenue
 
 MALL_WALKWAY_HEIGHT = 3.6      # underside of the covered walkway canopy
-# The canopy is shifted off its surveyed line to run out from the mall
-# entrance, taking over the spot the porte-cochere used to occupy. Blender XY
-# metres; the surveyed way sits ~13 m south of the entrance axis.
-MALL_WALKWAY_OFFSET = (2.9, -13.4)
+# Outer face of the scanned mall's entrance bay, in Blender XY. The canopy is
+# slid along until its inner end meets this, so it reads as running out of the
+# entrance rather than starting beside it. This is the one place the mall
+# departs from the surveyed OSM line.
+#
+# It has to be a constant because the entrance is placed by build_mall.py,
+# which runs separately; re-derive it from that script's placement if the
+# entrance ever moves.
+MALL_WALKWAY_ANCHOR = (-39.33, 522.85)
 
 # --- Cebu IT Park ----------------------------------------------------------
 # Ayala Malls Central Bloc opened after the aerial imagery most sources still
@@ -1279,9 +1284,16 @@ def build_country_mall(solid, lot_batch, walk_batch, mats, rings):
     if walk and len(walk) >= 3:
         wcentre, waxis, whalf_u, whalf_v = min_area_rect(walk)
         wx, wy = waxis
-        ox, oy = MALL_WALKWAY_OFFSET
-        a = (wcentre[0] - wx * whalf_u + ox, wcentre[1] - wy * whalf_u + oy)
-        b = (wcentre[0] + wx * whalf_u + ox, wcentre[1] + wy * whalf_u + oy)
+        a = (wcentre[0] - wx * whalf_u, wcentre[1] - wy * whalf_u)
+        b = (wcentre[0] + wx * whalf_u, wcentre[1] + wy * whalf_u)
+        # Slide the whole canopy so whichever end is nearer the mall lands on
+        # the entrance bay's face, keeping its surveyed length and bearing.
+        inner = a if (math.dist(a, MALL_WALKWAY_ANCHOR)
+                      < math.dist(b, MALL_WALKWAY_ANCHOR)) else b
+        shift = (MALL_WALKWAY_ANCHOR[0] - inner[0],
+                 MALL_WALKWAY_ANCHOR[1] - inner[1])
+        a = (a[0] + shift[0], a[1] + shift[1])
+        b = (b[0] + shift[0], b[1] + shift[1])
         walk_length = 2.0 * whalf_u
         width = max(3.0, 2.0 * whalf_v)
 

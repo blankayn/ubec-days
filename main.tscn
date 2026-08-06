@@ -24,7 +24,7 @@ fog_height_density = 0.04
 radius = 0.38
 height = 1.8
 
-[node name="CuencaAve" type="Node3D"]
+[node name="Ubec" type="Node3D"]
 script = ExtResource("1_world")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]

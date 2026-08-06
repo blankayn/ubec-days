@@ -48,8 +48,6 @@ func _initialize() -> void:
 			return
 	if not _require(player.has_method("add_battery"), "Battery controller must remain installed"):
 		return
-	if not _require(player.has_method("enter_hiding"), "Hiding controller must remain installed"):
-		return
 
 	print("PLAYER_CONTROLLER_SMOKE_TEST_PASS")
 	quit(0)

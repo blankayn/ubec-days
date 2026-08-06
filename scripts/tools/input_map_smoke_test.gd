@@ -12,7 +12,7 @@ const REQUIRED_ACTIONS := [
 	"look_left", "look_right", "look_up", "look_down",
 	"sprint", "jump", "interact", "attack", "attack_alt",
 	"handbrake", "pause", "phone", "flashlight",
-	"character_picker", "respawn", "exit_to_menu",
+	"character_picker", "respawn", "exit_to_menu", "fast_travel",
 ]
 
 const SECOND_PAD_DEVICE := 3
@@ -42,6 +42,7 @@ func _initialize() -> void:
 	_check_key(KEY_C, "character_picker")
 	_check_key(KEY_R, "respawn")
 	_check_key(KEY_M, "exit_to_menu")
+	_check_key(KEY_T, "fast_travel")
 
 	_check_mouse(MOUSE_BUTTON_LEFT, "attack")
 	_check_mouse(MOUSE_BUTTON_RIGHT, "attack_alt")

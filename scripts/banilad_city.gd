@@ -13,9 +13,19 @@ const DialogueChoiceUIScript := preload("res://scripts/dialogue_choice_ui.gd")
 const MuletNpcPropScript := preload("res://scripts/mulet_npc_prop.gd")
 const JholoNpcPropScript := preload("res://scripts/jholo_npc_prop.gd")
 const EdwardNpcPropScript := preload("res://scripts/edward_npc_prop.gd")
+const PoliceNpcPropScript := preload("res://scripts/police_npc_prop.gd")
 const CBlockEdwardScene := preload("res://assets/npcs/cblock_edward_npc.tscn")
 const DrivableVehicleScript := preload("res://scripts/vehicle_body.gd")
 const CountryMallAsset := preload("res://assets/buildings/gaisano_country_mall.glb")
+const SlumAsset := preload("res://assets/buildings/banilad_slum.glb")
+
+# The informal-settlement district, built from the modular house kit by
+# tools/build_slum.py at absolute map coordinates, so it instances at the origin
+# exactly like the mall. build_map.py keeps its SLUM_EXCLUSION block free of
+# procedural infill so the two do not grow through each other.
+# Collision comes from the `-col` mesh suffix at import time, not from
+# create_trimesh_collision() at runtime: there are 179 houses in here.
+const SLUM_GROUND_PROBE := Vector2(200.0, -545.0)
 
 # The scanned mall replaces the procedural wings. Its covered walkway is a
 # separate object in the map GLB (Mall_Walkway) precisely so it survives this.
@@ -38,6 +48,41 @@ const AVENUE_FORWARD := Vector3(0.161, 0.0, -0.987)
 
 # On Gov. M. Cuenco Avenue, roughly 120 m south of Gaisano Country Mall.
 const SPAWN_POSITION := Vector3(12.79, 1.2, -554.24)
+# How far above the road surface the player is dropped in. The y in
+# SPAWN_POSITION is only a fallback for when the ground ray misses.
+const SPAWN_CLEARANCE := 1.2
+
+## Fast travel, deliberately limited to places a Cebuano would name.
+##
+## Only the XZ anchor is stored. The height is resolved by the same ground ray
+## the spawn uses, so these stay correct when the terrain changes -- baking a y
+## in is what put the original spawn 32 m underground once terrain landed.
+##
+## Every anchor was checked against the OSM building footprints and nudged into
+## the open where it fell inside one; ten of these fifteen needed it, so do not
+## hand-edit a coordinate here without re-checking it. The destination is a
+## street or plaza NEAR the landmark, not its centre -- teleporting into the
+## middle of Metro Colon puts the player inside seven storeys of department
+## store.
+##
+## Godot coordinates: x is Blender x, z is the NEGATION of Blender y.
+const TELEPORTS: Array[Dictionary] = [
+	{"name": "Gov. M. Cuenco Avenue", "area": "Banilad  ·  spawn", "at": Vector2(12.79, -554.24)},
+	{"name": "Gaisano Country Mall", "area": "Banilad", "at": Vector2(-92.2, -473.0)},
+	{"name": "University of Cebu", "area": "Banilad", "at": Vector2(15.8, -415.8)},
+	{"name": "Cebu IT Park", "area": "Lahug  ·  Garden Bloc", "at": Vector2(-625.0, 299.0)},
+	{"name": "Ayala Malls Central Bloc", "area": "Cebu IT Park", "at": Vector2(-466.9, 514.4)},
+	{"name": "Ayala Center Cebu", "area": "Cebu Business Park", "at": Vector2(-677.0, 1930.0)},
+	{"name": "SM City Cebu", "area": "North Reclamation", "at": Vector2(743.0, 2430.0)},
+	{"name": "Fuente Osmeña Circle", "area": "Uptown", "at": Vector2(-2008.0, 2811.3)},
+	{"name": "Metro Colon", "area": "Downtown Colon", "at": Vector2(-1423.0, 4215.2)},
+	{"name": "Colon Obelisk", "area": "Downtown Colon", "at": Vector2(-849.5, 4070.0)},
+	{"name": "Basilica del Santo Niño", "area": "Parian", "at": Vector2(-1022.0, 4464.8)},
+	{"name": "Magellan's Cross", "area": "Parian", "at": Vector2(-1044.0, 4560.0)},
+	{"name": "Carbon Market", "area": "Carbon", "at": Vector2(-1373.0, 4820.0)},
+	{"name": "Fort San Pedro", "area": "Plaza Independencia", "at": Vector2(-611.0, 4720.0)},
+	{"name": "Cebu Port  ·  Pier 1", "area": "Port District", "at": Vector2(-348.0, 4760.0)},
+]
 # Fallback if a ground ray misses (sidewalk top ≈ 0.30 m).
 const NPC_GROUND_Y := 0.28
 # Capsule half-height for the Mixamo CharacterBody walker (height 1.8).
@@ -66,6 +111,8 @@ var _pause_menu: PauseMenuScript
 var _dialogue_ui: CanvasLayer = null
 var _picker_open := false
 var _picker_overlay: ColorRect
+var _travel_open := false
+var _travel_overlay: ColorRect
 var _character_buttons: Dictionary = {}
 var _selected_preview_id := ""
 var _vehicles: Array = []
@@ -74,6 +121,9 @@ var _active_vehicle = null
 
 func _ready() -> void:
 	Engine.max_fps = 60
+	# The always-resident half of the map -- ground, sea, road collision plane,
+	# skyline. Streamed tiles are handled by tile_streamer.gd as they arrive.
+	VertexAlbedo.apply(get_node_or_null(^"NavigationRegion3D/Level"))
 	CharacterRoster.load_saved()
 	if hud.has_method("bind_host"):
 		hud.call("bind_host", self)
@@ -84,6 +134,7 @@ func _ready() -> void:
 		player.prompt_changed.connect(_set_interact_prompt)
 	_build_dialogue_ui()
 	_build_character_picker()
+	_build_travel_menu()
 	_build_pause_menu()
 	_refresh_help_text()
 	_respawn()
@@ -94,6 +145,7 @@ func _ready() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	await _place_country_mall()
+	_place_slum()
 	_spawn_street_npcs()
 	_spawn_vehicles()
 
@@ -134,6 +186,30 @@ func _place_country_mall() -> void:
 
 	print("BANILAD_MALL_PLACED ground=%.3f base_offset=%.3f final_y=%.3f" % [
 		ground_y, ground_y - lowest, mall.global_position.y,
+	])
+
+
+## Drops the informal-settlement district onto the map.
+##
+## Same origin-agnostic grounding as the mall: instance at the origin, then
+## shift by the gap between the asset's own lowest vertex and the road surface.
+func _place_slum() -> void:
+	# Probe BEFORE the district joins the tree. Its houses are `-col` tagged, so
+	# once it is in, a downward ray over the block lands on a slum roof instead
+	# of the ground and the whole district stacks on top of itself.
+	var ground_y := _raycast_ground_y(SLUM_GROUND_PROBE.x, SLUM_GROUND_PROBE.y)
+
+	var slum := SlumAsset.instantiate() as Node3D
+	slum.name = "BaniladSlum"
+	add_child(slum)
+	slum.global_position = Vector3(0.0, ground_y, 0.0)
+
+	var lowest := _lowest_visual_point(slum)
+	if is_finite(lowest):
+		slum.global_position.y += ground_y - lowest
+
+	print("BANILAD_SLUM_PLACED ground=%.3f base_offset=%.3f final_y=%.3f" % [
+		ground_y, ground_y - lowest, slum.global_position.y,
 	])
 
 
@@ -307,6 +383,20 @@ func _spawn_street_npcs() -> void:
 		nameplate.text = "WALKER"
 	add_child(pedestrian)
 
+	# 5) Beat cop on the east sidewalk, facing the avenue a few metres up from
+	# the spawn. Milestone 6 takes him over; for now he stands his post.
+	var police_pos := _grounded_feet_position(Vector3(EAST_WALK - 0.6, 0.0, -558.0))
+	var police = PoliceNpcPropScript.new()
+	police.build_on_ready = false
+	police.target_height = 1.80
+	police.hud = hud
+	police.position = police_pos
+	police.face_look_target = Vector3(WEST_WALK, police_pos.y, -558.0)
+	police.has_face_look_target = true
+	add_child(police)
+	police.build()
+	police.name = "BaniladPolice"
+
 
 ## Prop NPCs put their soles at the node origin — plant that on the mesh.
 func _grounded_feet_position(xz: Vector3) -> Vector3:
@@ -322,9 +412,12 @@ func _raycast_ground_y(x: float, z: float) -> float:
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return NPC_GROUND_Y
+	# From well above the highest ground. The map has real terrain now: Banilad
+	# sits at about 33 m and the hill roads reach 165 m, so a ray starting at
+	# 50 m begins underground over most of the west side and finds nothing.
 	var query := PhysicsRayQueryParameters3D.create(
-		Vector3(x, 50.0, z),
-		Vector3(x, -30.0, z)
+		Vector3(x, 300.0, z),
+		Vector3(x, -40.0, z)
 	)
 	query.collision_mask = 1
 	if player != null:
@@ -382,6 +475,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			_close_character_picker()
 			get_viewport().set_input_as_handled()
 		return
+	if event.is_action_pressed(&"fast_travel"):
+		if _travel_open:
+			_close_travel_menu()
+		else:
+			_open_travel_menu()
+		get_viewport().set_input_as_handled()
+		return
+	# Same rule as the picker: while the travel list is up it owns Esc, so the
+	# pause menu cannot stack on top of it.
+	if _travel_open:
+		if event.is_action_pressed(&"pause"):
+			_close_travel_menu()
+			get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed(&"exit_to_menu"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		get_tree().change_scene_to_file(MENU_SCENE)
@@ -393,11 +500,26 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _respawn() -> void:
+	var point := _ground_spawn()
 	if player.has_method("reset_character"):
-		player.reset_character(SPAWN_POSITION)
+		player.reset_character(point)
 	else:
-		player.global_position = SPAWN_POSITION
+		player.global_position = point
 		player.velocity = Vector3.ZERO
+
+
+func _ground_spawn() -> Vector3:
+	## SPAWN_POSITION is an XZ anchor on Gov. M. Cuenco Avenue; its height is
+	## resolved from the road surface every time.
+	##
+	## It used to be a literal y = 1.2, which was right when the whole map was
+	## flat at zero. Terrain puts that stretch of Cuenco at about 33 m, so the
+	## constant spawned the player 32 m underground -- through the collision
+	## mesh and straight past FALL_LIMIT.
+	var y := _raycast_ground_y(SPAWN_POSITION.x, SPAWN_POSITION.z)
+	if not is_finite(y):
+		return SPAWN_POSITION
+	return Vector3(SPAWN_POSITION.x, y + SPAWN_CLEARANCE, SPAWN_POSITION.z)
 
 
 func _load_landmarks() -> void:
@@ -422,7 +544,7 @@ func _load_landmarks() -> void:
 
 
 func _update_nearest_landmark() -> void:
-	if _picker_open:
+	if _picker_open or _travel_open:
 		return
 	var origin := player.global_position
 	var best_name := ""
@@ -470,8 +592,131 @@ func _show_message(text: String, duration: float = 4.0) -> void:
 func _refresh_help_text() -> void:
 	help_label.text = (
 		"WASD move  |  Mouse orbit  |  Shift sprint  |  Space jump  |  "
-		+ "E interact / drive  |  Space handbrake  |  Esc pause  |  C character  |  M menu"
+		+ "E interact / drive  |  Space handbrake  |  Esc pause  |  C character  |  "
+		+ "T travel  |  M menu"
 	)
+
+
+func _build_travel_menu() -> void:
+	_travel_overlay = ColorRect.new()
+	_travel_overlay.name = "TravelMenu"
+	_travel_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_travel_overlay.color = Color(0.02, 0.04, 0.07, 0.82)
+	_travel_overlay.visible = false
+	_travel_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	hud.add_child(_travel_overlay)
+
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_PASS
+	_travel_overlay.add_child(center)
+
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(620, 0)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.07, 0.11, 0.16, 0.96)
+	style.border_color = Color(0.45, 0.78, 0.92, 0.9)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(10)
+	style.content_margin_left = 28
+	style.content_margin_right = 28
+	style.content_margin_top = 24
+	style.content_margin_bottom = 24
+	panel.add_theme_stylebox_override("panel", style)
+	center.add_child(panel)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 10)
+	panel.add_child(column)
+
+	var title := Label.new()
+	title.text = "FAST TRAVEL"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(0.94, 0.97, 1.0, 1.0))
+	title.add_theme_color_override("font_outline_color", Color(0.01, 0.02, 0.03, 1.0))
+	title.add_theme_constant_override("outline_size", 6)
+	column.add_child(title)
+
+	var subtitle := Label.new()
+	subtitle.text = "Landmarks only — the places Cebu is navigated by"
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.add_theme_font_size_override("font_size", 15)
+	subtitle.add_theme_color_override("font_color", Color(0.65, 0.76, 0.84, 1.0))
+	column.add_child(subtitle)
+
+	# A scroll box, because the list is longer than a phone-sized viewport and
+	# the last entries would otherwise be unreachable.
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 430)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	column.add_child(scroll)
+
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 6)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+
+	for i in TELEPORTS.size():
+		var entry: Dictionary = TELEPORTS[i]
+		var button := Button.new()
+		button.custom_minimum_size = Vector2(0, 46)
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.text = "  %s      %s" % [entry["name"], entry["area"]]
+		button.add_theme_font_size_override("font_size", 17)
+		button.pressed.connect(_travel_to.bind(i))
+		list.add_child(button)
+
+	var close_btn := Button.new()
+	close_btn.text = "Close"
+	close_btn.custom_minimum_size = Vector2(0, 42)
+	close_btn.pressed.connect(_close_travel_menu)
+	column.add_child(close_btn)
+
+
+func _open_travel_menu() -> void:
+	_travel_open = true
+	_travel_overlay.visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if player.has_method("set_controls_enabled"):
+		player.set_controls_enabled(false)
+	if _pause_menu != null:
+		_pause_menu.set_pause_blocked(true)
+	_set_prompt("Pick a landmark to travel to")
+
+
+func _close_travel_menu() -> void:
+	_travel_open = false
+	_travel_overlay.visible = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_set_prompt("")
+	if _pause_menu != null:
+		_pause_menu.set_pause_blocked(false)
+	if player.has_method("set_controls_enabled"):
+		player.set_controls_enabled(true)
+
+
+func _travel_to(index: int) -> void:
+	if index < 0 or index >= TELEPORTS.size():
+		return
+	var entry: Dictionary = TELEPORTS[index]
+	var at: Vector2 = entry["at"]
+	# Height from the collision surface, never from a stored constant. The
+	# ground plane and the road collision plane are both always-resident, so
+	# this resolves even when the destination's detail tiles have not streamed
+	# in yet -- which is the normal case immediately after a 4 km jump.
+	var y := _raycast_ground_y(at.x, at.y)
+	if not is_finite(y):
+		push_warning("fast travel: no ground under %s" % entry["name"])
+		return
+	var point := Vector3(at.x, y + SPAWN_CLEARANCE, at.y)
+	if player.has_method("reset_character"):
+		player.reset_character(point)
+	else:
+		player.global_position = point
+		player.velocity = Vector3.ZERO
+	_close_travel_menu()
+	_show_message("%s  //  %s" % [entry["name"], entry["area"]], 3.5)
 
 
 func _build_character_picker() -> void:

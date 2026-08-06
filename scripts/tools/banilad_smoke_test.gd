@@ -12,13 +12,32 @@ const PATH_TO := Vector3(-2.68, 0.5, -338.69)
 const SETTLE_FRAMES := 90
 const NAV_TIMEOUT_FRAMES := 1200
 
-# Z_ROAD_COLLISION in build_map.py: the single flat plane physics drives on.
-const ROAD_COLLISION_Y := 0.13
-const ROAD_COLLISION_TOLERANCE := 0.02
+# Z_ROAD_COLLISION in build_map.py: how far the drive surface sits above the
+# terrain under it. No longer an absolute height -- the collision plane is
+# draped on real ground, so the road is near 33 m at Banilad and 11 m at Colon.
+const ROAD_SURFACE_OFFSET := 0.13
+# Loose, because the graph height at a junction is interpolated from several
+# roads at once. Tight enough to catch the plane going missing.
+const ROAD_COLLISION_TOLERANCE := 2.0
+const ROAD_GRAPH := "res://assets/maps/cebu_road_graph.json"
 
-# Two collision surfaces closer together than this are what a wheel ray flips
-# between from frame to frame.
+# The regression this guards is the layer_z-staggered VISUAL ribbons regaining
+# collision. build_map.py separates them by LAYER_STEP (2 mm) across up to
+# LAYER_SLOTS (16) slots, so the signature is a thick stack of near-identical
+# surfaces inside about 3 cm, and a wheel ray flips between them frame to frame.
+#
+# A pairwise-gap test was the right detector while the map was flat, because
+# two collision surfaces within 5 cm could only be that artifact. On terrain it
+# no longer separates them: two carriageways crossing at a junction are draped
+# from the same continuous field at different tessellations, so they genuinely
+# sit millimetres apart. Measured at 5-46 mm, and tessellating the collision
+# mesh to 4 m only got that to 19 mm while quadrupling a never-unloaded mesh.
+#
+# COUNT inside the window still tells them apart: an overlap is a handful of
+# surfaces, the artifact is a pile of them. The real fix for the overlap is
+# junction fill quads (CITY_MASTER_PLAN.md section 3.2).
 const CHATTER_BAND := 0.05
+const CHATTER_MAX_SURFACES := 4
 
 # Road junctions that measurably had the bug before Roads_Collision existed:
 # (28, -682) presented surfaces 2 mm apart — exactly the layer_z stagger — and
@@ -34,6 +53,7 @@ const ROAD_PROBES: Array[Vector2] = [
 var _level: Node3D
 var _frames := 0
 var _failures: Array[String] = []
+var _graph_nodes: Array = []
 
 
 func _initialize() -> void:
@@ -114,20 +134,26 @@ func _run_checks() -> void:
 	if nav.get_polygon_count() <= 0:
 		_fail("navigation mesh has no polygons")
 
+	# The map is streamed. `Level` now holds only banilad_base.glb -- the ground
+	# plane and the flat road-collision surface, which are never unloaded -- and
+	# the bulk of the collision arrives with whichever tiles the streamer has
+	# made resident around the player.
 	var level_node := region.get_node_or_null("Level")
+	var streamer := region.get_node_or_null("TileStreamer")
 	if level_node == null:
 		_fail("Level instance missing under NavigationRegion3D")
 	else:
-		var bodies := 0
-		for child in level_node.get_children():
-			if child is StaticBody3D:
-				bodies += 1
-			for grandchild in child.get_children():
-				if grandchild is StaticBody3D:
-					bodies += 1
-		print("[smoke] static bodies under level: %d" % bodies)
-		if bodies < 50:
-			_fail("expected many static bodies, found %d" % bodies)
+		var base_bodies := _count_static_bodies(level_node)
+		var tile_bodies := 0 if streamer == null else _count_static_bodies(streamer)
+		print("[smoke] static bodies: base %d, streamed tiles %d" % [base_bodies, tile_bodies])
+		# Ground and Roads_Collision. Without these the player falls through the
+		# world the moment a tile is late, which is the whole point of the split.
+		if base_bodies < 2:
+			_fail("base map must carry ground and road collision, found %d bodies" % base_bodies)
+		if streamer == null:
+			_fail("TileStreamer missing under NavigationRegion3D")
+		elif tile_bodies < 30:
+			_fail("expected substantial collision from streamed tiles, found %d" % tile_bodies)
 
 	var map: RID = region.get_navigation_map()
 	print("[smoke] nav map synced after %d frames (%d region(s))" % [
@@ -208,26 +234,33 @@ func _check_road_collision_is_flat() -> void:
 	var space := _level.get_world_3d().direct_space_state
 	var carriageway_hits := 0
 	for probe in ROAD_PROBES:
-		var surfaces := _surfaces_below(space, probe.x, probe.y, 2.0, 0.02)
+		# The window has to follow the terrain now. It used to run 2.0 m down to
+		# 0.02 m, which was right when the map was flat at zero -- on real
+		# ground it starts 30 m underground at Banilad and finds nothing at all.
+		var expect := _expected_road_y(probe)
+		var surfaces := _surfaces_below(space, probe.x, probe.y,
+			expect + 6.0, expect - 6.0)
 		var above_ground: Array[float] = []
 		for y in surfaces:
-			if y > 0.02:
-				above_ground.append(y)
+			above_ground.append(y)
 		print("[smoke] road probe (%.2f, %.2f): surfaces above ground: %s" % [
 			probe.x, probe.y, str(above_ground),
 		])
-		# A raised sidewalk well above the road is fine. Two surfaces within
-		# millimetres of each other are the stacked-ribbon regression.
-		for i in range(above_ground.size() - 1):
-			var gap: float = absf(above_ground[i] - above_ground[i + 1])
-			if gap <= CHATTER_BAND:
-				_fail(
-					"(%.2f, %.2f) has collision surfaces %.3f m apart (%.3f / %.3f)"
-					% [probe.x, probe.y, gap, above_ground[i], above_ground[i + 1]]
-				)
+		# A raised sidewalk well above the road is fine, and so are the couple of
+		# draped carriageways that overlap at a junction. A PILE of surfaces
+		# inside the band is the stacked-ribbon regression.
+		for i in range(above_ground.size()):
+			var stacked := 0
+			for j in range(above_ground.size()):
+				if absf(above_ground[i] - above_ground[j]) <= CHATTER_BAND:
+					stacked += 1
+			if stacked > CHATTER_MAX_SURFACES:
+				_fail("(%.2f, %.2f) has %d collision surfaces within %.0f cm of %.3f - the layer_z stack is back"
+					% [probe.x, probe.y, stacked, CHATTER_BAND * 100.0, above_ground[i]])
+				break
 		var on_drive_plane := false
 		for y in above_ground:
-			if absf(y - ROAD_COLLISION_Y) <= ROAD_COLLISION_TOLERANCE:
+			if absf(y - expect) <= ROAD_COLLISION_TOLERANCE:
 				on_drive_plane = true
 				carriageway_hits += 1
 				break
@@ -235,21 +268,42 @@ func _check_road_collision_is_flat() -> void:
 		# carry their kerb straight over the crossing road, which the car hits.
 		if on_drive_plane:
 			for y in above_ground:
-				if y > ROAD_COLLISION_Y + ROAD_COLLISION_TOLERANCE:
+				if y > expect + ROAD_COLLISION_TOLERANCE:
 					_fail(
 						"something sits %.2f m above the carriageway at (%.2f, %.2f)"
-						% [y - ROAD_COLLISION_Y, probe.x, probe.y]
+						% [y - expect, probe.x, probe.y]
 					)
 
 	print("[smoke] probes on the drive plane: %d of %d" % [
 		carriageway_hits, ROAD_PROBES.size(),
 	])
 	if carriageway_hits == 0:
-		_fail("no probe found the Roads_Collision drive plane at y=%.2f" % ROAD_COLLISION_Y)
+		_fail("no probe found the Roads_Collision drive plane")
 
 
 ## Walks a ray down through everything it can hit, restarting just under each
 ## contact, so coplanar-but-not-identical surfaces are all reported.
+func _expected_road_y(probe: Vector2) -> float:
+	## Where the road graph says the drive surface is at this spot.
+	## The probes sit on junctions, so the nearest graph node is the right
+	## reference; taking it from the graph is also what makes this a real
+	## cross-check between the mesh and the data traffic will be driven from.
+	if _graph_nodes.is_empty():
+		var text := FileAccess.get_file_as_string(ROAD_GRAPH)
+		var parsed: Variant = JSON.parse_string(text)
+		if typeof(parsed) == TYPE_DICTIONARY:
+			_graph_nodes = parsed.get("nodes", [])
+	var best := 0.0
+	var best_distance := INF
+	for node in _graph_nodes:
+		var p: Array = node["p"]
+		var d := Vector2(float(p[0]) - probe.x, float(p[1]) - probe.y).length_squared()
+		if d < best_distance:
+			best_distance = d
+			best = float(node["y"])
+	return best + ROAD_SURFACE_OFFSET
+
+
 func _surfaces_below(
 	space: PhysicsDirectSpaceState3D,
 	x: float,
@@ -273,6 +327,15 @@ func _surfaces_below(
 		# stack would still be resolved one surface at a time.
 		cursor = y - 0.001
 	return found
+
+
+func _count_static_bodies(root: Node) -> int:
+	var count := 0
+	for child in root.get_children():
+		if child is StaticBody3D:
+			count += 1
+		count += _count_static_bodies(child)
+	return count
 
 
 func _fail(message: String) -> void:

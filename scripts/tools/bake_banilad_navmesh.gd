@@ -4,6 +4,11 @@ extends SceneTree
 ##   Godot_v4.7-stable_win64.exe --headless --path . --script res://scripts/tools/bake_banilad_navmesh.gd
 
 const MAP_SCENE := "res://assets/maps/banilad_map.glb"
+# The slum is instanced at runtime by banilad_city.gd, not baked into the map
+# GLB, but it stands at Godot x 170..265 / z -585..-505, well inside the bake
+# volume below. Leave it out and the navmesh lays walkable floor straight
+# through 168 houses.
+const SLUM_SCENE := "res://assets/buildings/banilad_slum.glb"
 const NAVMESH_OUT := "res://assets/maps/banilad_navmesh.res"
 
 # The player capsule in cblock_player.gd is radius 0.38 / height 1.8.
@@ -57,6 +62,15 @@ func _initialize() -> void:
 	region.navigation_mesh = nav
 
 	region.add_child(level)
+
+	var slum_packed := load(SLUM_SCENE) as PackedScene
+	if slum_packed == null:
+		push_warning("could not load %s; navmesh will ignore the slum" % SLUM_SCENE)
+	else:
+		# Same contract as banilad_city.gd: absolute map coordinates, so it goes
+		# in at the origin with no transform.
+		region.add_child(slum_packed.instantiate())
+
 	root.add_child(region)
 	_region = region
 

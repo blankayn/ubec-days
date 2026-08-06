@@ -24,7 +24,10 @@ cam = bpy.data.objects["AerialCamera"]
 
 scene.render.engine = "CYCLES"
 scene.cycles.device = "CPU"
-scene.cycles.samples = 24
+# 24 for iteration, 64 for a final shot. The physical sky costs more samples to
+# resolve than the flat constant world did -- at 24 the haze near the horizon
+# stays visibly grainy even after denoising.
+scene.cycles.samples = 64 if "--final" in sys.argv else 24
 scene.cycles.use_denoising = True
 scene.cycles.max_bounces = 3
 scene.cycles.use_fast_gi = True
@@ -45,9 +48,39 @@ SHOTS = [
     ("itpark", (-250.0, -1050.0, 260.0), (68.0, 0.0, 45.0), 40.0),
     ("central_bloc", (-250.0, -640.0, 175.0), (66.0, 0.0, 52.0), 45.0),
     ("itpark_skyline", (-180.0, -1080.0, 120.0), (78.0, 0.0, 34.0), 38.0),
+
+    # --- Slices 1-5: the wider city ----------------------------------------
+    # Blender y is the negation of Godot z, so downtown sits at large -y.
+    # Camera convention: x rotation 0 looks straight down and 90 looks level;
+    # z rotation 0 faces north (+y).
+    # Top-down. The built area is about 3.9 km east-west by 5.3 km north-south,
+    # so the view is turned 90 degrees to lay the long axis across the frame --
+    # facing north wastes half the image and overshoots the ground plane edge.
+    # Centre follows the built area, which now runs to y = -5100 at the Port.
+    ("city_overview", (-950.0, -2150.0, 4500.0), (0.0, 0.0, 90.0), 24.0),
+    ("ayala_bizpark", (-695.0, -2250.0, 260.0), (63.0, 0.0, 0.0), 40.0),
+    ("fuente_circle", (-2022.0, -3120.0, 210.0), (62.0, 0.0, 0.0), 40.0),
+    ("colon_downtown", (-1205.0, -4800.0, 240.0), (64.0, 0.0, 0.0), 40.0),
+    # Along Osmena Boulevard from Fuente toward Colon: the 24 m descent that
+    # Phase 2 terrain exists to capture, still rendered dead flat.
+    ("osmena_descent", (-2206.0, -2380.0, 250.0), (72.0, 0.0, 207.0), 40.0),
+
+    # --- Slice 6: Carbon and the Port --------------------------------------
+    # The southern end of the map, all looking north from just seaward.
+    ("carbon_market", (-1391.0, -4980.0, 230.0), (63.0, 0.0, 0.0), 40.0),
+    ("fort_san_pedro", (-657.0, -4950.0, 190.0), (62.0, 0.0, 0.0), 40.0),
+    # Piers 1-4 and the waterfront. This is where the missing sea shows: OSM
+    # defines open water by the coastline, and natural=coastline is not in the
+    # Overpass query, so the harbour is still ground at about 0 m.
+    ("port_piers", (-480.0, -4900.0, 300.0), (58.0, 0.0, 0.0), 35.0),
+    # Magellan's Cross Pavilion (way 94081127) with the Basilica behind it.
+    # Absent until this slice: it sat 37 m past slice 5's southern boundary.
+    ("magellans_cross", (-1030.0, -4740.0, 110.0), (72.0, 0.0, 0.0), 45.0),
 ]
 
 wanted = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+# A flag, not a shot name; it is read above for the sample count.
+wanted = [w for w in wanted if w != "--final"]
 if wanted:
     known = {s[0] for s in SHOTS}
     unknown = [w for w in wanted if w not in known]

@@ -4,7 +4,6 @@ signal prompt_changed(text: String)
 signal interaction_feedback(text: String)
 signal battery_changed(percent: float)
 signal flashlight_changed(is_on: bool)
-signal noise_emitted(position: Vector3, level: float, radius: float)
 signal phone_toggle_requested()
 
 @export var walk_speed := 4.6
@@ -37,11 +36,7 @@ var flashlight_unlocked := false
 var _flashlight_on := false
 var _flashlight_base_energy := 3.2
 var _flashlight_flicker_timer := 0.0
-var _footstep_noise_timer := 0.0
 var _input_locked := false
-var _is_hiding := false
-var _hide_camera: Camera3D = null
-var _hide_camera_base_rotation := Vector3.ZERO
 var _keys: Dictionary = {}
 var _phone_light: OmniLight3D = null
 
@@ -92,8 +87,7 @@ func _input(event: InputEvent) -> void:
 		return
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_ignore_mouse_motion_frames = 2
-	if not _is_hiding:
-		_try_melee()
+	_try_melee()
 	get_viewport().set_input_as_handled()
 
 
@@ -104,20 +98,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _input_locked:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		if _is_hiding and _hide_camera != null:
-			var hide_rotation := _hide_camera.rotation
-			hide_rotation.x = clamp(
-				hide_rotation.x - event.relative.y * mouse_sensitivity,
-				_hide_camera_base_rotation.x - deg_to_rad(15.0),
-				_hide_camera_base_rotation.x + deg_to_rad(15.0)
-			)
-			hide_rotation.y = clamp(
-				hide_rotation.y - event.relative.x * mouse_sensitivity,
-				_hide_camera_base_rotation.y - deg_to_rad(15.0),
-				_hide_camera_base_rotation.y + deg_to_rad(15.0)
-			)
-			_hide_camera.rotation = hide_rotation
-			return
 		if _ignore_mouse_motion_frames > 0 or event.relative.length() > 180.0:
 			return
 		rotate_y(-event.relative.x * mouse_sensitivity)
@@ -130,10 +110,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_F:
 				_toggle_flashlight()
 			KEY_E:
-				if _is_hiding:
-					exit_hiding()
-				else:
-					_try_interact()
+				_try_interact()
 
 
 func _physics_process(delta: float) -> void:
@@ -141,7 +118,7 @@ func _physics_process(delta: float) -> void:
 	_auto_jump_timer = maxf(_auto_jump_timer - delta, 0.0)
 	_jump_buffer_timer = maxf(_jump_buffer_timer - delta, 0.0)
 	_update_flashlight(delta)
-	if _input_locked or _is_hiding:
+	if _input_locked:
 		velocity = Vector3.ZERO
 		_update_camera_shake(delta)
 		_update_prompt()
@@ -181,7 +158,6 @@ func _physics_process(delta: float) -> void:
 	velocity.x = move_toward(velocity.x, target_velocity.x, acceleration * delta)
 	velocity.z = move_toward(velocity.z, target_velocity.z, acceleration * delta)
 	move_and_slide()
-	_emit_footstep_noise(delta)
 
 	var horizontal_speed := Vector2(velocity.x, velocity.z).length()
 	var moving := direction.length_squared() > 0.01 and horizontal_speed > 0.15
@@ -216,10 +192,6 @@ func has_key(key_id: StringName) -> bool:
 	return _keys.has(key_id)
 
 
-func is_hiding() -> bool:
-	return _is_hiding
-
-
 func is_flashlight_on() -> bool:
 	return _flashlight_on
 
@@ -241,29 +213,6 @@ func set_ui_locked(locked: bool) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
-func enter_hiding(hide_camera: Camera3D) -> void:
-	if _is_hiding or hide_camera == null:
-		return
-	_is_hiding = true
-	_hide_camera = hide_camera
-	_hide_camera_base_rotation = hide_camera.rotation
-	camera.current = false
-	_hide_camera.current = true
-	interaction_feedback.emit("HIDDEN  //  Press E to leave")
-
-
-func exit_hiding() -> void:
-	if not _is_hiding:
-		return
-	if _hide_camera != null:
-		_hide_camera.current = false
-		_hide_camera.rotation = _hide_camera_base_rotation
-	camera.current = true
-	_hide_camera = null
-	_is_hiding = false
-	interaction_feedback.emit("LEFT HIDING SPOT")
-
-
 func _toggle_flashlight() -> void:
 	if not flashlight_unlocked:
 		interaction_feedback.emit("FLASHLIGHT: You do not need it until nightfall.")
@@ -273,7 +222,6 @@ func _toggle_flashlight() -> void:
 		return
 	_set_flashlight_on(not _flashlight_on)
 	interaction_feedback.emit("FLASHLIGHT: " + ("ON" if _flashlight_on else "OFF"))
-	noise_emitted.emit(global_position, 1.0, 3.0)
 
 
 func _set_flashlight_on(on: bool) -> void:
@@ -281,9 +229,6 @@ func _set_flashlight_on(on: bool) -> void:
 	flashlight.visible = _flashlight_on
 	flashlight.light_energy = _flashlight_base_energy
 	flashlight_changed.emit(_flashlight_on)
-	var scare_manager := get_tree().get_first_node_in_group("scare_manager")
-	if scare_manager != null and scare_manager.has_method("set_flashlight"):
-		scare_manager.set_flashlight(_flashlight_on)
 
 
 func _update_flashlight(delta: float) -> void:
@@ -308,18 +253,6 @@ func _update_flashlight(delta: float) -> void:
 		_flashlight_flicker_timer = randf_range(0.08, 0.25)
 		flashlight.visible = randf() < 0.7
 		flashlight.light_energy = _flashlight_base_energy * randf_range(0.4, 1.0)
-
-
-func _emit_footstep_noise(delta: float) -> void:
-	_footstep_noise_timer = maxf(_footstep_noise_timer - delta, 0.0)
-	if _footstep_noise_timer > 0.0:
-		return
-	var horizontal_speed := Vector2(velocity.x, velocity.z).length()
-	if horizontal_speed < 0.1:
-		return
-	var running := horizontal_speed >= walk_speed + 0.4
-	noise_emitted.emit(global_position, 6.0 if running else 2.0, 15.0 if running else 5.0)
-	_footstep_noise_timer = 0.28 if running else 0.55
 
 
 func _should_auto_jump(direction: Vector3) -> bool:
@@ -409,7 +342,6 @@ func _try_melee() -> void:
 		return
 	if started:
 		add_trauma(0.08)
-		noise_emitted.emit(global_position, 4.0, 8.0)
 		await get_tree().create_timer(0.14).timeout
 		_apply_melee_hit()
 	else:

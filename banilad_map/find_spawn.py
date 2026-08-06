@@ -3,17 +3,15 @@
 import json
 import math
 import pathlib
+import sys
 
 HERE = pathlib.Path(__file__).parent
-LAT0, LON0 = 10.3345, 123.9115
-M_LAT = 110574.0
-M_LON = 111320.0 * math.cos(math.radians(LAT0))
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+from geo import project  # noqa: E402
 
 data = json.loads((HERE / "banilad_osm.json").read_text(encoding="utf-8"))
-
-
-def project(lat, lon):
-    return ((lon - LON0) * M_LON, (lat - LAT0) * M_LAT)
 
 
 # Gaisano centroid in Blender space (Godot z was negated on export).

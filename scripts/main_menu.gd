@@ -1,5 +1,5 @@
 extends Control
-## Clean, razor-sharp HD Main Menu for CUENCA AVE.
+## Clean, razor-sharp HD Main Menu for UBEC.
 
 const UBEC_SCENE := "res://main.tscn"
 const CBLOCK_SCENE := "res://cblock_map.tscn"
@@ -118,7 +118,7 @@ func _build_ui() -> void:
 	# TITLE — Large, Razor-Sharp, High Contrast White
 	_title = Label.new()
 	_title.name = "Title"
-	_title.text = "CUENCA AVE"
+	_title.text = "UBEC"
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title.add_theme_font_size_override("font_size", 72)
 	_title.add_theme_color_override("font_color", Color("ffffff"))
@@ -128,7 +128,7 @@ func _build_ui() -> void:
 
 	_subtitle = Label.new()
 	_subtitle.name = "Subtitle"
-	_subtitle.text = "UC Banilad · After Dark"
+	_subtitle.text = "Days"
 	_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_subtitle.add_theme_font_size_override("font_size", 20)
 	_subtitle.add_theme_color_override("font_color", Color("94a3b8"))
@@ -308,7 +308,7 @@ func _on_chapter_select_pressed() -> void:
 
 
 func _verify_password() -> void:
-	if _pwd_input.text == DEFAULT_PASSWORD or _pwd_input.text.to_lower() == "inday" or _pwd_input.text.to_lower() == "ucb":
+	if _pwd_input.text == DEFAULT_PASSWORD or _pwd_input.text.to_lower() == "ubec":
 		_close_password_modal()
 		_open_chapter_modal()
 	else:
@@ -371,7 +371,7 @@ func _build_chapter_modal() -> void:
 	ch2_btn.pressed.connect(func(): _launch_chapter(2))
 	col.add_child(ch2_btn)
 
-	var ch3_btn := _make_clean_button("Chapter 3: Naa Ko Diri (Inside UC)")
+	var ch3_btn := _make_clean_button("Chapter 3: Back Inside (UC)")
 	ch3_btn.pressed.connect(func(): _launch_chapter(3))
 	col.add_child(ch3_btn)
 
@@ -432,7 +432,7 @@ func _build_loading_overlay() -> void:
 	panel.add_child(col)
 
 	_loading_label = Label.new()
-	_loading_label.text = "Loading Cuenca Ave..."
+	_loading_label.text = "Loading UBEC..."
 	_loading_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_loading_label.add_theme_font_size_override("font_size", 20)
 	_loading_label.add_theme_color_override("font_color", Color("e2e8f0"))
@@ -459,7 +459,7 @@ func _build_loading_overlay() -> void:
 	col.add_child(_loading_bar)
 
 
-func _show_loading_overlay(status_text: String = "Loading Cuenca Ave...") -> void:
+func _show_loading_overlay(status_text: String = "Loading UBEC...") -> void:
 	_loading_label.text = status_text
 	_loading_bar.value = 0.0
 	_loading_overlay.visible = true
@@ -524,7 +524,6 @@ func _poll_scene_load() -> void:
 
 
 func _launch_chapter(ch_number: int) -> void:
-	StoryManagerType.horror_playthrough = false
 	StoryManagerType.selected_starting_chapter = ch_number
 	_begin_scene_transition(UBEC_SCENE, "Loading UBEC...")
 
@@ -552,7 +551,6 @@ func _play_intro_motion() -> void:
 
 
 func _on_new_game_pressed() -> void:
-	StoryManagerType.horror_playthrough = false
 	_launch_chapter(1)
 
 

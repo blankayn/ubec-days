@@ -25,14 +25,18 @@ import bpy
 
 HERE = pathlib.Path(__file__).parent
 PROJECT = HERE.parent
+# Blender's `-P` does not put the script's own directory on sys.path.
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+# The same local projection build_map.py uses, so the model lands on the map.
+# This file used to carry its own copy with METRES_PER_DEG_LAT = 110540.0
+# against build_map.py's 110574.0, which put the mall about 0.35 m off the very
+# OSM footprints it is built from.
+from geo import project  # noqa: E402
+
 OSM = HERE / "banilad_osm.json"
 OUT = PROJECT / "assets" / "buildings" / "gaisano_country_mall.glb"
-
-# Same local projection as build_map.py, so the model lands on the map.
-LAT0 = 10.3345
-LON0 = 123.9115
-METRES_PER_DEG_LAT = 110540.0
-METRES_PER_DEG_LON = 111320.0 * math.cos(math.radians(LAT0))
 
 #   way id: (ground floor height, eaves height, arcade tiers)
 WINGS = {
@@ -695,9 +699,7 @@ def load_rings():
     for element in data["elements"]:
         if element.get("type") != "way" or "geometry" not in element:
             continue
-        pts = [((p["lon"] - LON0) * METRES_PER_DEG_LON,
-                (p["lat"] - LAT0) * METRES_PER_DEG_LAT)
-               for p in element["geometry"]]
+        pts = [project(p["lat"], p["lon"]) for p in element["geometry"]]
         if len(pts) >= 2 and math.dist(pts[0], pts[-1]) < 0.5:
             pts = pts[:-1]
         rings[element["id"]] = pts

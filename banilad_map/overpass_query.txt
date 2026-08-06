@@ -1,14 +1,110 @@
+# Cebu City OSM extract.
+#
+# The bbox below is the single source of truth for the map's extent --
+# build_map.py projects whatever it finds. fetch_osm.py reads the two header
+# directives, subdivides the bbox into tiles, and substitutes each tile into
+# every {bbox} placeholder in the query body.
+#
+#   bbox:  south west north east    (decimal degrees)
+#   tiles: rows cols                (fetch subdivision; "1 1" is one request)
+#
+# Every line starting with `#` is stripped by fetch_osm.py and never reaches
+# Overpass. That matters: Overpass QL has no `#` comment, so these annotations
+# only work because the fetcher removes them. Use `#`, not `//`.
+#
+# ---------------------------------------------------------------------------
+# ACTIVE -- the FULL target: slices 0-6, Banilad through IT Park, Lahug,
+# Business Park + Ayala, Fuente, the University Belt, Colon / Parian, and
+# finally Carbon Market and the Port. 3.61 x 5.75 km, 20.78 km2.
+#
+# The south edge reaches Godot z = +5031, taking in Carbon Market (z +4644),
+# Fort San Pedro (z +4644), Plaza Independencia (z +4566), Malacanang sa Sugbo
+# and Piers 1-4 (z +4423).
+#
+# This slice is the first that meets the SEA. Terrain makes that tractable:
+# sea level is the y = 0 datum and the shoreline is wherever the ground
+# crosses it -- see CITY_MASTER_PLAN.md section 5, Port District.
+bbox: 10.2890 123.8860 10.3410 123.9190
+tiles: 8 3
+#
+# FULL TARGET -- on through Ayala, Fuente, Colon and Carbon to the Port.
+# 3.61 x 5.75 km, 20.8 km2.
+#
+# Do NOT jump straight there. The map is still one un-tiled GLB, which stops
+# being viable around slice 3, so Phase 4 (250 m tiles + streaming) has to land
+# first. South-bound slices, from CITY_MASTER_PLAN.md:
+#
+# (All slices are now active. The extent is complete.)
+# ---------------------------------------------------------------------------
+#
+# ERA: circa-2019 Cebu -- pre-redevelopment Carbon Market, pre-BRT Osmena Blvd.
+#
+# Overpass can serve a genuine 2019 snapshot via an attic-date directive on the
+# settings line:
+#
+#   [out:json][timeout:300][date:"2019-01-01T00:00:00Z"];
+#
+# We deliberately do NOT do that. OSM's Cebu coverage in 2019 was materially
+# thinner than it is today, and thin downtown building coverage is already the
+# top-ranked accuracy risk for Colon and Carbon. An attic query would make the
+# biggest problem worse in order to fix a much smaller one. They are also slow
+# and only reliably supported on overpass-api.de.
+#
+# Instead: fetch current data for the coverage, and override the handful of
+# era-sensitive sites in build_map.py (the Carbon Market precinct and the
+# Osmena Blvd BRT works). Flip the directive above if that trade stops paying.
+
 [out:json][timeout:300];
 (
-  way["building"](10.3240,123.9030,10.3410,123.9190);
-  way["building:part"](10.3240,123.9030,10.3410,123.9190);
-  way["highway"](10.3240,123.9030,10.3410,123.9190);
-  way["waterway"](10.3240,123.9030,10.3410,123.9190);
-  way["natural"="water"](10.3240,123.9030,10.3410,123.9190);
-  way["landuse"](10.3240,123.9030,10.3410,123.9190);
-  way["leisure"](10.3240,123.9030,10.3410,123.9190);
-  way["amenity"="parking"](10.3240,123.9030,10.3410,123.9190);
-  node["amenity"](10.3240,123.9030,10.3410,123.9190);
-  node["shop"](10.3240,123.9030,10.3410,123.9190);
+  way["building"]({bbox});
+  way["building:part"]({bbox});
+  way["highway"]({bbox});
+  way["waterway"]({bbox});
+  # The whole `natural` key, not just ="water".
+  #
+  # Cebu Harbour is not a water polygon: in OSM, open sea is defined by
+  # `natural=coastline` -- by where land STOPS -- so asking only for water
+  # returned 0 coastline ways and the Port rendered as ground at sea level.
+  # Taking the key broadly also picks up beach, sand and wetland at the
+  # waterfront, and avoids paying for yet another 24-tile re-fetch later.
+  way["natural"]({bbox});
+  way["landuse"]({bbox});
+  way["leisure"]({bbox});
+  way["amenity"="parking"]({bbox});
+
+  # Traffic control, one-ways and crossings. The road graph (Phase 1) and the
+  # traffic and NPC systems (Phases 6-7) are all built from these.
+  # node["highway"] carries traffic_signals, crossing, stop and give_way, and
+  # was missing from this query entirely -- which is the reason none of it
+  # could be read before, no matter what build_map.py did.
+  node["highway"]({bbox});
+
+  # Walls, fences, and the Fort San Pedro curtain.
+  way["barrier"]({bbox});
+
+  # Bridges, and the Carbon / port rail spurs.
+  way["bridge"]({bbox});
+  way["railway"]({bbox});
+
+  # Piers 1-4 and the Cebu Port waterfront.
+  way["man_made"="pier"]({bbox});
+
+  # Carbon and Pasil.
+  way["amenity"="marketplace"]({bbox});
+
+  # Fort San Pedro, Magellan's Cross, the Parian heritage houses.
+  #
+  # The NODE form matters as much as the way form: small monuments are
+  # routinely mapped as a single node, and Magellan's Cross -- rank 3 in the
+  # landmark list, the best recognition-per-effort on the whole map -- was
+  # absent from slices 1-5 for exactly that reason.
+  way["historic"]({bbox});
+  node["historic"]({bbox});
+
+  node["amenity"]({bbox});
+  node["shop"]({bbox});
+
+  # Turn restrictions, for traffic AI in Phase 6b.
+  relation["type"="restriction"]({bbox});
 );
 out body geom;

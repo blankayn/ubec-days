@@ -13,6 +13,14 @@ banilad_map/*.blend
 banilad_map/*.blend1
 # Staging copy of the export; the shipped one lives in assets/maps/.
 banilad_map/export/
+# Per-tile Overpass responses. fetch_osm.py caches each tile here so re-pulling
+# one district does not re-pull the whole city; the merged banilad_osm.json is
+# the tracked input.
+banilad_map/.osm_cache/
+
+# Python bytecode from the shared pipeline modules (geo.py, districts.py).
+__pycache__/
+*.pyc
 
 # Editor/session scratch
 captures/

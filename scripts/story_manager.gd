@@ -1,8 +1,12 @@
 extends Node
-## StoryManager — three-chapter arc for UCB Banilad
-## Ch1: Day campus quest → walk home → realize something was left behind
-## Ch2: Night return across Cuenco Ave / the bridge
-## Ch3: Retrieve the forgotten item inside UC and confront Inday's presence
+## StoryManager — three-chapter placeholder arc for UC Banilad.
+## Ch1: Day campus errands → head home → realise something was left behind
+## Ch2: Night return across Cuenco Ave / the bridge, campus round on the way in
+## Ch3: Retrieve the forgotten USB from inside UC
+##
+## The content here is scaffolding for Milestone 6's mission system: chapters,
+## objectives, hints and SMS are all wired to interactable ids in world.gd, so
+## replacing the text and the id tables replaces the game's script.
 
 signal chapter_changed(chapter: int, title: String)
 signal objective_changed(text: String)
@@ -12,7 +16,7 @@ signal story_complete()
 const CHAPTER_TITLES := {
 	1: "CHAPTER 1 — DAY ERRAND",
 	2: "CHAPTER 2 — FORGOTTEN",
-	3: "CHAPTER 3 — NA AKO DIRI",
+	3: "CHAPTER 3 — BACK INSIDE",
 }
 
 var chapter: int = 1
@@ -27,9 +31,7 @@ var _item_name: String = "USB drive"
 # Wired by world.gd
 var player: CharacterBody3D = null
 var hud: CanvasLayer = null
-var scare_manager: Node = null
 var phone_ui: CanvasLayer = null
-var vhs_system: CanvasLayer = null
 var _sent_sms: Dictionary = {}
 
 
@@ -54,17 +56,9 @@ func _ready() -> void:
 
 
 static var selected_starting_chapter: int = 1
-## When true, Playthrough skips the three-chapter story and runs horror/survival only.
-static var horror_playthrough: bool = false
-
-var is_horror_mode: bool = false
 
 
 func start(start_ch: int = 1) -> void:
-	if horror_playthrough:
-		_start_horror_playthrough()
-		return
-	is_horror_mode = false
 	chapter = start_ch
 	match start_ch:
 		1:
@@ -83,7 +77,7 @@ func start(start_ch: int = 1) -> void:
 			_home_triggered = true
 			day_night_changed.emit(true)
 			chapter_changed.emit(2, CHAPTER_TITLES[2])
-			_send_sms("Unknown", "Ayaw pag balik.")
+			_send_sms("Mama", "Gabii na. Ingat pag balik sa UC.")
 			_refresh_hud()
 			if hud:
 				hud.show_message("19:48 // Night fell. Check the fuse box, payphone, and dead tree.", 6.0)
@@ -95,27 +89,11 @@ func start(start_ch: int = 1) -> void:
 				_night_checks[k] = true
 			day_night_changed.emit(true)
 			chapter_changed.emit(3, CHAPTER_TITLES[3])
-			if phone_ui != null and phone_ui.has_method("set_no_signal"):
-				phone_ui.set_no_signal(true)
 			_refresh_hud()
 			if hud:
-				hud.show_message("CHAPTER 3 // Inside UC — USB in locker wing (Ground). Check Floor 8 elevator.", 6.0)
+				hud.show_message("CHAPTER 3 // Inside UC — USB in locker wing (Ground). Check the Floor 8 elevator.", 6.0)
 		_:
 			start(1)
-
-
-func _start_horror_playthrough() -> void:
-	is_horror_mode = true
-	chapter = 0
-	is_night = true
-	day_night_changed.emit(true)
-	chapter_changed.emit(0, "HORROR PLAYTHROUGH")
-	_refresh_hud()
-	if hud:
-		hud.show_message(
-			"23:15 // UC Banilad after dark. Flashlight on. Collect VHS tapes, barricade doors, hide when something hunts you.",
-			7.0
-		)
 
 
 func refresh_objective() -> void:
@@ -123,17 +101,10 @@ func refresh_objective() -> void:
 
 
 func get_chapter_title() -> String:
-	if is_horror_mode:
-		return "HORROR PLAYTHROUGH"
-	return CHAPTER_TITLES.get(chapter, "UCB INDAY")
+	return CHAPTER_TITLES.get(chapter, "UBEC")
 
 
 func get_objective_text() -> String:
-	if is_horror_mode:
-		var tapes := 0
-		if vhs_system != null and vhs_system.has_method("tape_count"):
-			tapes = int(vhs_system.tape_count())
-		return "HORROR  SURVIVE UC BANILAD\nVHS tapes %d / 6  ·  Tab phone  ·  F flashlight\nStay quiet — noise draws it" % tapes
 	match chapter:
 		1:
 			var done := _count_true(_day_tasks)
@@ -150,23 +121,14 @@ func get_objective_text() -> String:
 			var next_hint := _next_ch3_hint()
 			return "CH 3  INSIDE UC  %02d / 03\n%s" % [done, next_hint]
 		_:
-			return "UCB INDAY"
+			return "UBEC"
 
 
 func on_floor_entered(floor: int) -> void:
-	if is_horror_mode:
-		return
 	if chapter == 1 and floor == 3:
 		_send_sms("Classmate", "Naa koy nabilin sa 5F, pwede kuha?")
 	if chapter == 2 and floor >= 1:
-		_send_sms("Unknown", "Ayaw gamita ang elevator.")
-
-
-func on_creature_spotted() -> void:
-	if is_horror_mode:
-		return
-	if chapter == 2:
-		_send_sms("Unknown", "Nakadungog ka?")
+		_send_sms("Guard", "Elevator is out of service, sir. Stairs lang.")
 
 
 func _send_sms(sender: String, body: String) -> void:
@@ -203,12 +165,10 @@ func _next_ch3_hint() -> String:
 		return "NEXT: Hallway note · 2F · South corridor (near Room 202)"
 	if not _ch3_steps[&"ch3_elevator"]:
 		return "NEXT: Elevator · GF · Lobby core (display stuck on 8F)"
-	return "NEXT: Floor 8 · Someone is still upstairs"
+	return "NEXT: Floor 8 · Take the stairs and check the top landing"
 
 
 func on_interactable(id: StringName, message: String) -> bool:
-	if is_horror_mode:
-		return false
 	## Returns true if this interaction was consumed by the story system.
 	match chapter:
 		1:
@@ -224,7 +184,7 @@ func on_interactable(id: StringName, message: String) -> bool:
 				return true
 			if _ch3_steps.has(id):
 				if hud:
-					hud.show_message("Mang Berting wants the three checks finished first.", 3.5)
+					hud.show_message("Mang Berting wants the three night checks finished first.", 3.5)
 				return true
 			return await _handle_chapter2(id, message)
 		3:
@@ -239,8 +199,6 @@ func on_interactable(id: StringName, message: String) -> bool:
 
 
 func tick(_delta: float) -> void:
-	if is_horror_mode:
-		return
 	if chapter != 1 or _home_triggered or not _home_zone_ready:
 		return
 	if player == null:
@@ -286,7 +244,7 @@ func _begin_chapter2() -> void:
 	is_night = true
 	day_night_changed.emit(true)
 	chapter_changed.emit(2, CHAPTER_TITLES[2])
-	_send_sms("Unknown", "Ayaw pag balik.")
+	_send_sms("Mama", "Gabii na. Ingat pag balik sa UC.")
 	_refresh_hud()
 	if hud:
 		hud.show_message("19:48 // Night fell while you walked. Turn back toward UC Banilad.", 6.0)
@@ -296,10 +254,6 @@ func _begin_chapter2() -> void:
 
 
 func _handle_chapter2(id: StringName, message: String) -> bool:
-	if id == &"caretaker":
-		if hud:
-			hud.show_message(message, 6.0)
-		return true
 	if not _night_checks.has(id):
 		return false
 	if _night_checks[id]:
@@ -307,8 +261,6 @@ func _handle_chapter2(id: StringName, message: String) -> bool:
 	_night_checks[id] = true
 	if hud:
 		hud.show_message(message, 5.0)
-	if scare_manager and scare_manager.has_method("on_inspection_complete"):
-		scare_manager.on_inspection_complete(_count_true(_night_checks))
 	_refresh_hud()
 	if _count_true(_night_checks) >= 3:
 		await get_tree().create_timer(5.5).timeout
@@ -319,14 +271,12 @@ func _handle_chapter2(id: StringName, message: String) -> bool:
 func _begin_chapter3() -> void:
 	chapter = 3
 	chapter_changed.emit(3, CHAPTER_TITLES[3])
-	if phone_ui != null and phone_ui.has_method("set_no_signal"):
-		phone_ui.set_no_signal(true)
 	_refresh_hud()
 	if hud:
-		hud.show_message("The building lights stutter. Your %s is still inside." % _item_name, 5.5)
+		hud.show_message("Checks logged. Your %s is still inside." % _item_name, 5.5)
 	await get_tree().create_timer(5.8).timeout
 	if hud:
-		hud.show_message("Enter UC Ground / Lobby. USB is in the locker wing (Ground). Watch Floor 8 on the elevator.", 6.0)
+		hud.show_message("Enter UC Ground / Lobby. USB is in the locker wing (Ground). The elevator is stuck on Floor 8.", 6.0)
 
 
 func _handle_chapter3(id: StringName, message: String) -> bool:
@@ -338,13 +288,10 @@ func _handle_chapter3(id: StringName, message: String) -> bool:
 	if hud:
 		hud.show_message(message, 6.0)
 	_refresh_hud()
-	if scare_manager and scare_manager.has_method("on_inspection_complete"):
-		# Reuse tension bump without advancing night-check count semantics
-		scare_manager.call("_add_tension", 0.28)
 	var done := _count_true(_ch3_steps)
 	if done == 2 and hud:
 		await get_tree().create_timer(6.2).timeout
-		hud.show_message("Footsteps above you. Same tempo as the elevator indicator.", 5.0)
+		hud.show_message("One left. The elevator indicator has not moved off 8 all night.", 5.0)
 	elif done >= 3:
 		await get_tree().create_timer(6.5).timeout
 		_finish_story()
@@ -353,23 +300,12 @@ func _handle_chapter3(id: StringName, message: String) -> bool:
 
 func _finish_story() -> void:
 	if hud:
-		hud.show_message("You have the %s. The screen still blinks 8. Someone is still upstairs." % _item_name, 7.0)
-	await get_tree().create_timer(7.5).timeout
-	if hud:
-		var tapes_found: int = int(vhs_system.tape_count()) if vhs_system != null and vhs_system.has_method("tape_count") else 0
-		if tapes_found <= 2:
-			hud.show_message("BAD ENDING // You escaped, but the footage explains nothing. Floor 8 is still calling.", 8.0)
-		elif tapes_found <= 4:
-			hud.show_message("NORMAL ENDING // You piece together part of Inday's story from %d tapes." % tapes_found, 8.0)
-		else:
-			hud.show_message("TRUE ENDING // All six tapes reveal what was buried beneath UC Banilad.", 8.0)
+		hud.show_message("You have the %s. Sign out at the guard post and head home." % _item_name, 7.0)
 	story_complete.emit()
 	_refresh_hud()
 
 
 func get_active_quest_id() -> StringName:
-	if is_horror_mode:
-		return &""
 	match chapter:
 		1:
 			for quest_id: StringName in [&"day_locker", &"day_registrar"]:

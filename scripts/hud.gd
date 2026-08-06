@@ -11,8 +11,6 @@ var _flash_tween: Tween = null
 var _battery_panel: PanelContainer
 var _battery_bar: ProgressBar
 var _battery_label: Label
-var _noise_label: Label
-var _noise_tween: Tween
 
 
 @onready var message_panel: ColorRect = $Root/MessagePanel
@@ -20,7 +18,7 @@ var _noise_tween: Tween
 
 func _ready() -> void:
 	_apply_readable_text_scale()
-	_build_survival_hud()
+	_build_battery_panel()
 	set_prompt("")
 	set_chapter_objective("CH 1  DAY ERRANDS  00 / 02\nNEXT: Locker · GF · School front (exterior, left of gate)")
 	message_panel.visible = false
@@ -31,7 +29,7 @@ func _ready() -> void:
 		flash_rect.visible = true
 
 
-func _build_survival_hud() -> void:
+func _build_battery_panel() -> void:
 	var root := $Root
 	_battery_panel = PanelContainer.new()
 	_battery_panel.name = "BatteryPanel"
@@ -74,19 +72,6 @@ func _build_survival_hud() -> void:
 	_battery_bar.add_theme_stylebox_override("fill", bar_fill)
 	column.add_child(_battery_bar)
 
-	_noise_label = Label.new()
-	_noise_label.name = "NoiseIndicator"
-	_noise_label.set_anchors_preset(Control.PRESET_CENTER)
-	_noise_label.position = Vector2(-110, 54)
-	_noise_label.size = Vector2(220, 32)
-	_noise_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_noise_label.add_theme_font_size_override("font_size", 16)
-	_noise_label.add_theme_color_override("font_outline_color", Color("020202"))
-	_noise_label.add_theme_constant_override("outline_size", 5)
-	_noise_label.visible = false
-	_noise_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(_noise_label)
-
 
 func set_battery(percent: float, available: bool = true) -> void:
 	if _battery_panel == null:
@@ -100,20 +85,6 @@ func set_battery(percent: float, available: bool = true) -> void:
 	var fill := _battery_bar.get_theme_stylebox("fill") as StyleBoxFlat
 	if fill != null:
 		fill.bg_color = Color("b9d970") if clamped > 50.0 else (Color("d7a85e") if clamped > 20.0 else Color("d85a54"))
-
-
-func show_noise(level: float, _radius: float) -> void:
-	if _noise_label == null:
-		return
-	if _noise_tween != null and _noise_tween.is_valid():
-		_noise_tween.kill()
-	_noise_label.visible = true
-	_noise_label.modulate.a = 1.0
-	_noise_label.text = "◌  NOISE  ◌"
-	_noise_label.add_theme_color_override("font_color", Color("7edc8a") if level <= 2.0 else (Color("f1d266") if level < 6.0 else Color("ef625a")))
-	_noise_tween = create_tween()
-	_noise_tween.tween_property(_noise_label, "modulate:a", 0.0, 0.7)
-	_noise_tween.tween_callback(func() -> void: _noise_label.visible = false)
 
 
 func _apply_readable_text_scale() -> void:
@@ -134,7 +105,7 @@ func set_prompt(text: String) -> void:
 
 
 func set_objective(current: int, total: int) -> void:
-	objective_label.text = "CUENCA AVE\nINSPECTIONS  %02d / %02d" % [current, total]
+	objective_label.text = "UBEC\nINSPECTIONS  %02d / %02d" % [current, total]
 
 
 func set_chapter_objective(text: String) -> void:
@@ -155,7 +126,7 @@ func show_message(text: String, duration: float = 5.0) -> void:
 		message_panel.visible = false
 
 
-## Flash the screen with a color — used for jumpscares.
+## Flash the screen with a color — used for the day/night transition.
 ## color.a controls peak opacity; duration is fade-in + fade-out time.
 func screen_flash(color: Color, duration: float) -> void:
 	if flash_rect == null:

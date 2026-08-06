@@ -11,6 +11,7 @@ const GUSION_SCENE := preload(
 	"res://assets/characters/gusion/gusion_dimension_w_rigged.glb"
 )
 const DUTERTE_SCENE := preload("res://characters/president_duterte__rig.glb")
+const POLICE_SCENE := preload("res://assets/npcs/police.glb")
 const IDLE_SCENE := preload("res://animation mixamo/Idle.fbx")
 const WALK_SCENE := preload("res://animation mixamo/Walking.fbx")
 const SPRINT_SCENE := preload("res://animation mixamo/Sprint.fbx")
@@ -21,6 +22,7 @@ const HIT_SCENE := preload("res://animation mixamo/Hit To Body.fbx")
 const CHARACTER_SCENES := {
 	"gusion": GUSION_SCENE,
 	"duterte": DUTERTE_SCENE,
+	"police": POLICE_SCENE,
 }
 
 const EMBEDDED_LOCOMOTION := {
@@ -79,6 +81,10 @@ const REQUIRED_CORE_BONES := [
 @export var acceleration := 18.0
 @export var turn_speed := 11.0
 @export var jump_force := 5.6
+## Tallest ledge the body climbs by walking into it. The map's kerbed sidewalks
+## top out at 0.30 m (Z_SIDEWALK 0.15 + KERB_HEIGHT 0.15 in build_map.py), so
+## this clears a kerb with margin while still leaving real walls unclimbable.
+@export var max_step_height := 0.45
 
 @export_category("GTA Camera")
 @export var mouse_sensitivity := 0.0022
@@ -238,6 +244,7 @@ func _physics_process(delta: float) -> void:
 	elif velocity.y < 0.0:
 		velocity.y = -0.1
 
+	_try_step_up(delta)
 	move_and_slide()
 
 	if direction.length_squared() > 0.01:
@@ -252,6 +259,49 @@ func _physics_process(delta: float) -> void:
 	_update_camera_transform()
 	_update_animation(sprinting)
 	_update_interaction_probe()
+
+
+## CharacterBody3D has no built-in step height: a 0.15 m kerb reads as a wall
+## and move_and_slide just stops dead against it, which is why walking onto a
+## sidewalk used to need a jump. This lifts the body over anything up to
+## max_step_height when the path is blocked at foot level but clear above it.
+##
+## Runs before move_and_slide so the horizontal velocity already queued for this
+## frame carries the body forward onto the ledge it was just raised over.
+func _try_step_up(delta: float) -> bool:
+	if not is_on_floor() or velocity.y > 0.0:
+		return false
+	var motion := Vector3(velocity.x, 0.0, velocity.z) * delta
+	if motion.length_squared() < 0.000001:
+		return false
+	# Probe a little further than one frame of travel so the lift happens on the
+	# approach rather than after the body is already jammed against the kerb.
+	var probe := motion.normalized() * maxf(motion.length(), 0.12)
+
+	var from := global_transform
+	if not test_move(from, probe):
+		return false  # Nothing in the way; ordinary movement handles it.
+
+	var raised := from.translated(Vector3.UP * max_step_height)
+	if test_move(raised, probe):
+		return false  # Still blocked a step up: this is a wall, not a kerb.
+
+	# Find the surface the raised body would come down on after stepping across.
+	var landing := KinematicCollision3D.new()
+	var descent := max_step_height + 0.05
+	if not test_move(raised.translated(probe), Vector3.DOWN * descent, landing):
+		return false  # Ledge with nothing to stand on — a gap, so refuse.
+	if landing.get_normal().angle_to(Vector3.UP) > floor_max_angle:
+		return false  # Too steep to count as floor.
+
+	# The raised body sat max_step_height up; whatever of that it fell back
+	# through is clearance, and the remainder is the height of the step.
+	var rise := max_step_height - landing.get_travel().length()
+	if rise <= 0.0:
+		return false
+	global_position.y += rise
+	velocity.y = 0.0
+	return true
 
 
 func _apply_pad_look(delta: float) -> void:
@@ -408,7 +458,7 @@ func set_controls_enabled(enabled: bool) -> void:
 
 
 ## The first-person controller names this the other way round. Shared UI
-## (dialogue_choice_ui.gd, vhs_system.gd) calls set_ui_locked on whichever
+## (dialogue_choice_ui.gd, phone_ui.gd) calls set_ui_locked on whichever
 ## player it was handed, so both controllers answer to both names.
 func set_ui_locked(locked: bool) -> void:
 	set_controls_enabled(not locked)

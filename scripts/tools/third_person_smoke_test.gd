@@ -87,7 +87,7 @@ func _check_interact_fired() -> void:
 
 
 func _check_ui_lock() -> void:
-	# dialogue_choice_ui.gd and vhs_system.gd only know set_ui_locked().
+	# dialogue_choice_ui.gd and phone_ui.gd only know set_ui_locked().
 	if not _player.has_method("set_ui_locked"):
 		_fail("controller is missing the set_ui_locked alias")
 		return

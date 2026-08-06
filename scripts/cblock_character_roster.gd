@@ -20,6 +20,13 @@ const CHARACTERS := {
 		"scene_path": "res://characters/president_duterte__rig.glb",
 		"uses_embedded_clips": false,
 	},
+	"police": {
+		"id": "police",
+		"display_name": "PO1 Ramirez",
+		"subtitle": "UBEC beat cop · Mixamo rig",
+		"scene_path": "res://assets/npcs/police.glb",
+		"uses_embedded_clips": false,
+	},
 }
 
 static var selected_id: String = DEFAULT_ID
@@ -27,7 +34,7 @@ static var selected_id: String = DEFAULT_ID
 
 static func list_characters() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	for character_id in ["gusion", "duterte"]:
+	for character_id in ["gusion", "duterte", "police"]:
 		if CHARACTERS.has(character_id):
 			result.append(CHARACTERS[character_id])
 	return result

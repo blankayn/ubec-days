@@ -39,6 +39,12 @@ import terrain  # noqa: E402
 OSM = HERE / "banilad_osm.json"
 OUT = PROJECT / "assets" / "buildings" / "gaisano_country_mall.glb"
 
+# Bake this model flat at z = 0 instead of on the terrain seat. MUST match
+# build_map.py's FLAT_WORLD: banilad_city.gd swaps this scanned mall in for the
+# procedural wings, so if build_map is flat and this is not, the mall hangs in
+# the air on its old ~33 m seat over the flat ground.
+FLAT_WORLD = True
+
 #   way id: (ground floor height, eaves height, arcade tiers)
 WINGS = {
     93839848:   (5.2, 10.6, 2),
@@ -892,6 +898,8 @@ def seat_on_terrain(wing_rings):
     now has to run AFTER it. Re-solving here would risk the two disagreeing,
     which is the drift the shared graph exists to prevent.
     """
+    if FLAT_WORLD:
+        return 0.0, 0.0
     try:
         graph = json.loads(terrain.ROAD_GRAPH.read_text(encoding="utf-8"))
         ground_at = terrain.ground_sampler(

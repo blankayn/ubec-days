@@ -855,6 +855,51 @@ AYALA_LEVEL = 4.3          # retail floors
 AYALA_LEVELS = 5           # OSM building:levels on way 29261598
 
 
+def _perimeter_stations(ring, spacing):
+    """Points along a ring at ~`spacing` apart, each with its edge bearing.
+
+    For hanging evenly spaced facade detail -- pilasters -- on an irregular OSM
+    footprint without having to know where its corners fall.
+    """
+    n = len(ring)
+    for i in range(n):
+        ax, ay = ring[i]
+        bx, by = ring[(i + 1) % n]
+        dx, dy = bx - ax, by - ay
+        length = math.hypot(dx, dy)
+        if length < 1e-6:
+            continue
+        bearing = math.atan2(dy, dx)
+        count = max(1, int(round(length / spacing)))
+        for k in range(count):
+            t = (k + 0.5) / count
+            yield ax + dx * t, ay + dy * t, bearing
+
+
+def _longest_edge(ring):
+    """(midpoint, bearing, outward unit normal) of the footprint's longest edge.
+
+    The main frontage: long enough to carry the entrance and the signage, and
+    the normal points away from the centroid so the canopy projects outward.
+    """
+    cx, cy = centroid(ring)
+    best = None
+    n = len(ring)
+    for i in range(n):
+        ax, ay = ring[i]
+        bx, by = ring[(i + 1) % n]
+        length = math.hypot(bx - ax, by - ay)
+        if best is None or length > best[0]:
+            mx, my = (ax + bx) * 0.5, (ay + by) * 0.5
+            bearing = math.atan2(by - ay, bx - ax)
+            nx, ny = math.sin(bearing), -math.cos(bearing)
+            if (mx + nx - cx) ** 2 + (my + ny - cy) ** 2 \
+                    < (mx - cx) ** 2 + (my - cy) ** 2:
+                nx, ny = -nx, -ny
+            best = (length, (mx, my), bearing, (nx, ny))
+    return best[1], best[2], best[3]
+
+
 def build_ayala_center(batch, mats, ring, rng=None):
     """Five-level mall with The Terraces cut into its northern flank.
 
@@ -869,23 +914,60 @@ def build_ayala_center(batch, mats, ring, rng=None):
     Center anybody pictures, and it is a VOID in the massing rather than more
     massing -- so it is cut into the block as a descending court, not stacked
     on top.
+
+    Up close the bare extrusion read as a blank slab, so the frontage is
+    articulated the way the real mall is: a glazed ground-floor shopfront, a
+    pilaster every few metres to break the horizontal glazing bands, a cornice
+    at the parapet, and a canopied main entrance under a lit signage band.
     """
     cx, cy = centroid(ring)
     top = AYALA_LEVELS * AYALA_LEVEL
+    radius = _mean_radius(ring, cx, cy)
+    wall = mats["Ayala_Wall"]
 
     v, f = prism(ring, 0.0, top)
-    batch.add(v, f, mats["Ayala_Wall"])
+    batch.add(v, f, wall)
     v, f = prism(shrink(ring, cx, cy, 0.99), top, top + 1.6)
     batch.add(v, f, mats["Roof_Deck"])
-    # Glazing courses. A 300 m frontage with none reads as one blank slab.
-    for level in range(AYALA_LEVELS):
+
+    # Ground-floor shopfront: a taller, darker glazed course so the street level
+    # reads as retail frontage rather than blank wall.
+    shop_h = AYALA_LEVEL * 0.9
+    v, f = prism(shrink(ring, cx, cy, 1.004), 0.4, shop_h, cap_top=False)
+    batch.add(v, f, mats["Shopfront_Glass"])
+    # Upper glazing courses, one per storey. A 300 m frontage with none reads as
+    # one blank slab.
+    for level in range(1, AYALA_LEVELS):
         z0 = level * AYALA_LEVEL + 0.9
         z1 = (level + 1) * AYALA_LEVEL - 1.1
         v, f = prism(shrink(ring, cx, cy, 1.003), z0, z1, cap_top=False)
         batch.add(v, f, mats["Ayala_Glass"])
 
+    # Pilasters: one every ~13 m of frontage, standing proud of the glazing from
+    # grade to the cornice. This is what breaks the horizontal banding that read
+    # as a plain slab up close.
+    for px, py, bearing in _perimeter_stations(ring, 13.0):
+        v, f = _box(px, py, 0.0, top - 0.6, 0.55, 0.7, bearing)
+        batch.add(v, f, wall)
+    # Cornice: a capping band proud of the wall, so the parapet reads as a line.
+    v, f = prism(shrink(ring, cx, cy, 1.015), top - 1.0, top + 0.6, cap_top=False)
+    batch.add(v, f, wall)
+
+    # Main entrance on the longest frontage: a canopy on columns under a lit
+    # signage band -- the face people recognise.
+    (ex, ey), ebearing, (nx, ny) = _longest_edge(ring)
+    ax_, ay_ = math.cos(ebearing), math.sin(ebearing)
+    sign_z = top * 0.60
+    v, f = _box(ex + nx * 0.4, ey + ny * 0.4, sign_z, sign_z + 2.4, 9.0, 0.5, ebearing)
+    batch.add(v, f, mats["Bloc_Sign"])
+    v, f = _box(ex + nx * 3.2, ey + ny * 3.2, 4.0, 4.7, 8.5, 3.4, ebearing)
+    batch.add(v, f, mats["Roof_Deck"])
+    for s in (-7.0, -2.4, 2.4, 7.0):
+        v, f = _box(ex + nx * 6.2 + ax_ * s, ey + ny * 6.2 + ay_ * s,
+                    0.0, 4.2, 0.35, 0.35, ebearing)
+        batch.add(v, f, wall)
+
     # Roof plant: this roof is what every surrounding office tower looks down on.
-    radius = _mean_radius(ring, cx, cy)
     for i, (fx, fy) in enumerate(ring_of(cx, cy, radius * 0.5, 11)):
         v, f = _box(fx, fy, top + 1.6, top + 4.4 + (i % 3) * 0.9, 5.5, 4.2)
         batch.add(v, f, mats["Tower_Plant"])

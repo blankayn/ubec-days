@@ -1443,14 +1443,14 @@
     "name": "Ayala Center Cebu",
     "osm": null,
     "godot_position": [
-      -694.68,
+      -694.89,
       0.0,
-      1813.86
+      1813.76
     ],
     "roof_height": 27.7,
     "footprint": [
-      301.3,
-      354.3
+      304.9,
+      358.6
     ],
     "key": false
   },

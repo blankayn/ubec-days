@@ -34,6 +34,7 @@ if str(HERE) not in sys.path:
 # against build_map.py's 110574.0, which put the mall about 0.35 m off the very
 # OSM footprints it is built from.
 from geo import project  # noqa: E402
+import terrain  # noqa: E402
 
 OSM = HERE / "banilad_osm.json"
 OUT = PROJECT / "assets" / "buildings" / "gaisano_country_mall.glb"
@@ -103,7 +104,12 @@ PALETTE = {
     "Mall_Trim":     (0.957, 0.941, 0.906),
     "Mall_Tile":     (0.741, 0.353, 0.184),
     "Mall_TileDark": (0.573, 0.259, 0.133),
-    "Mall_Shadow":   (0.129, 0.114, 0.102),
+    # The arcade's back wall. Authored near-black it reads as a void rather
+    # than a recess, and the frontage faces +x while the sun travels +x, so
+    # this whole elevation is lit by ambient alone -- 0.28 of a blue fill. A
+    # near-black diffuse under a blue-only fill is what makes the mall a navy
+    # slab from the avenue. Dark enough to read as depth, not as a hole.
+    "Mall_Shadow":   (0.315, 0.290, 0.265),
     "Mall_Glass":    (0.243, 0.290, 0.310),
     "Mall_Sign":     (0.545, 0.161, 0.129),
     "Mall_Stone":    (0.510, 0.478, 0.443),
@@ -164,6 +170,18 @@ class Batch:
 
 def quad(a, b, c, d):
     return [a, b, c, d], [(0, 1, 2, 3)]
+
+
+def skirt(points, z0, z1):
+    """Vertical walls around a closed ring, open at BOTH ends.
+
+    prism() caps its top, which is right for a building mass and wrong for a
+    plinth: a capped plinth lays a flat plate across the whole footprint at
+    seat height, burying the courtyard and car park under one 180 x 190 m slab.
+    """
+    n = len(points)
+    verts = [(p[0], p[1], z0) for p in points] + [(p[0], p[1], z1) for p in points]
+    return verts, [(i, (i + 1) % n, n + (i + 1) % n, n + i) for i in range(n)]
 
 
 def prism(points, z0, z1):
@@ -233,10 +251,19 @@ def edge_normal(p0, p1):
 
 def hip_roof(batch, ring, eaves_z, material, edge_material=None,
              pitch=ROOF_PITCH, overhang=ROOF_OVERHANG, max_rise=4.2):
-    """Clay tile hip following the true outline, not a bounding rectangle."""
+    """Clay tile hip following the true outline, not a bounding rectangle.
+
+    The tile is carried nearly to the middle and the RISE is what gets clamped,
+    rather than clamping how far in the tile reaches. Clamping the reach is
+    what left a large flat deck in the centre of every wing: the slope stopped
+    10 m in and the remaining span was capped off flat, so the roof read as
+    grey panels edged in clay. Capping the rise instead flattens the pitch on a
+    big footprint -- which is the thing that stops a 95 m wing becoming one
+    enormous tent -- while the surface stays tiled the whole way across.
+    """
     outer = offset_ring(ring, -overhang)
-    inset = min(max_rise / max(pitch, 0.05), _inradius(ring) * 0.72)
-    rise = inset * pitch
+    inset = _inradius(ring) * 0.88
+    rise = min(inset * pitch, max_rise)
     inner = offset_ring(ring, inset - overhang)
 
     n = len(ring)
@@ -250,17 +277,61 @@ def hip_roof(batch, ring, eaves_z, material, edge_material=None,
     return eaves_z + rise
 
 
-def _inradius(ring):
-    cx = sum(p[0] for p in ring) / len(ring)
-    cy = sum(p[1] for p in ring) / len(ring)
+def _edge_distance(x, y, ring):
+    """Distance from a point to the nearest edge SEGMENT of a ring."""
     best = 1e9
     for i in range(len(ring)):
         p0, p1 = ring[i], ring[(i + 1) % len(ring)]
         dx, dy = p1[0] - p0[0], p1[1] - p0[1]
-        length = math.hypot(dx, dy)
-        if length < 1e-9:
+        length_sq = dx * dx + dy * dy
+        if length_sq < 1e-12:
             continue
-        best = min(best, abs((cx - p0[0]) * dy - (cy - p0[1]) * dx) / length)
+        t = max(0.0, min(1.0, ((x - p0[0]) * dx + (y - p0[1]) * dy) / length_sq))
+        best = min(best, math.dist((x, y), (p0[0] + dx * t, p0[1] + dy * t)))
+    return best
+
+
+def _inradius(ring):
+    """Radius of the largest circle that fits inside the ring.
+
+    Measured by searching for the deepest interior point, not by dropping a
+    perpendicular from the centroid to the nearest edge LINE. That older
+    reading collapses on any footprint that is not roughly convex: on an
+    L-shaped or concave wing the centroid can sit almost on a reflex edge --
+    or outside the ring entirely -- and the answer goes to nearly zero.
+
+    It mattered. These wings returned about 2.6 m each, which capped hip_roof's
+    inset at 1.9 m and its rise at 0.8 m, so the clay skirt shrank to a hairline
+    and the whole mall became a flat pale deck.
+    """
+    xs = [p[0] for p in ring]
+    ys = [p[1] for p in ring]
+    lo_x, hi_x, lo_y, hi_y = min(xs), max(xs), min(ys), max(ys)
+    best = 0.0
+    best_at = ((lo_x + hi_x) * 0.5, (lo_y + hi_y) * 0.5)
+    steps = 24
+    for i in range(steps + 1):
+        x = lo_x + (hi_x - lo_x) * i / steps
+        for j in range(steps + 1):
+            y = lo_y + (hi_y - lo_y) * j / steps
+            if not point_in_ring((x, y), ring):
+                continue
+            d = _edge_distance(x, y, ring)
+            if d > best:
+                best, best_at = d, (x, y)
+    # Refine around the winner, so a coarse grid does not under-report.
+    span = max((hi_x - lo_x), (hi_y - lo_y)) / steps
+    for _ in range(3):
+        cx, cy = best_at
+        for i in range(-2, 3):
+            for j in range(-2, 3):
+                x, y = cx + i * span * 0.5, cy + j * span * 0.5
+                if not point_in_ring((x, y), ring):
+                    continue
+                d = _edge_distance(x, y, ring)
+                if d > best:
+                    best, best_at = d, (x, y)
+        span *= 0.5
     return best
 
 
@@ -347,9 +418,13 @@ def band(batch, ring, z0, z1, material, bulge=0.18):
 
     Recessed bands are invisible -- they sit inside the wall -- so this always
     steps outward.
+
+    Open-topped: a cornice cap lands exactly on the wall cap it sits on, and
+    two coplanar near-white faces the size of a wing z-fight across the whole
+    roof. The roof covers this anyway.
     """
     outer = offset_ring(ring, -bulge)
-    verts, faces = prism(outer, z0, z1)
+    verts, faces = skirt(outer, z0, z1)
     batch.add(verts, faces, material)
 
 
@@ -757,10 +832,24 @@ def build_mall(batch, rings):
             p0, p1 = ring[i], ring[(i + 1) % len(ring)]
             normal = edge_normal(p0, p1)
             mid = ((p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5)
-            faces_front = (normal[0] * FRONT_DIRECTION[0] +
-                           normal[1] * FRONT_DIRECTION[1]) > FRONT_DOT
-            # An arcade on a buried edge is invisible and still costs triangles.
-            if faces_front and is_exposed(mid, normal, rings):
+            # Arcade every edge, full stop.
+            #
+            # Two filters used to stand here and both were wrong for this data.
+            # The direction test demanded an edge face east within FRONT_DOT,
+            # which blanked an 86.6 m elevation that missed by 0.06. And
+            # is_exposed() cannot work at all on these footprints: the nine
+            # surveyed blocks OVERLAP, so an edge on one wing's outer boundary
+            # sits deep inside a neighbour's ring and reads as buried while
+            # being plainly visible from the avenue. Sweeping its standoff from
+            # 7 m down to 0.5 m moved the arcaded/blank split by exactly zero
+            # -- 649 m against 622 m at every value -- because the edges are
+            # not marginally inside anything, they are wholly inside it.
+            #
+            # So there is no cheap test that separates hidden from visible
+            # here, and guessing wrong leaves a landmark reading as a slab.
+            # Arcading everything costs triangles on walls nobody sees; that is
+            # the affordable mistake of the two.
+            if True:
                 arcade_bays += arcaded_edge(batch, p0, p1, ground_h, eaves_h,
                                             tiers, materials)
             else:
@@ -770,11 +859,52 @@ def build_mall(batch, rings):
                                      0.0, eaves_h)
                 batch.add(verts, faces, materials["wall"])
 
+        # A storey line as well as the cornice. Every edge that gets no arcade
+        # is otherwise one flat extrusion from ground to eaves, and at this
+        # size that is a slab: with the frontage in shade there is no shading
+        # variation across it at all, so nothing reads the height. The band
+        # stands proud, so it catches the fill and casts its own line.
+        if ground_h < eaves_h - CORNICE_HEIGHT - BAND_HEIGHT:
+            band(batch, ring, ground_h - BAND_HEIGHT, ground_h, "Mall_Trim")
         band(batch, ring, eaves_h - CORNICE_HEIGHT, eaves_h, "Mall_Trim")
-        hip_roof(batch, ring, eaves_h, "Mall_Tile", "Mall_Deck")
+        # Tile the residual cap too: with the rise clamped instead of the reach
+        # it is a small flat top at the ridge, not a deck, so a separate grey
+        # material there just reads as a patch.
+        hip_roof(batch, ring, eaves_h, "Mall_Tile", "Mall_Tile")
 
     log("arcade bays: {:d}".format(arcade_bays))
     place_landmark_features(batch, rings)
+
+
+PLINTH_MARGIN = 0.6
+
+
+def seat_on_terrain(wing_rings):
+    """(seat, plinth depth) for the mall, or (0, 0) with no elevation cache.
+
+    This model is built at absolute map coordinates from z = 0, which was right
+    while the map was flat. On terrain a flat-bottomed 200 m building is buried
+    at its high end and hanging in the air at its low one -- the ground falls
+    several metres across these footprints. Same rule the rest of the pipeline
+    uses: stand on the HIGH corner and carry a plinth down past the low one.
+
+    Heights come from the solved road graph build_map.py writes, so this script
+    now has to run AFTER it. Re-solving here would risk the two disagreeing,
+    which is the drift the shared graph exists to prevent.
+    """
+    try:
+        graph = json.loads(terrain.ROAD_GRAPH.read_text(encoding="utf-8"))
+        ground_at = terrain.ground_sampler(
+            graph, terrain.PointField(terrain.load_dem()))
+    except (SystemExit, OSError, ValueError) as exc:
+        log("WARNING: no terrain ({!s}); building flat at z=0".format(exc))
+        return 0.0, 0.0
+    heights = [ground_at(x, y) for ring in wing_rings.values()
+               if len(ring) >= 3 for x, y in ring]
+    if not heights:
+        return 0.0, 0.0
+    low, high = min(heights), max(heights)
+    return high, (high - low) + PLINTH_MARGIN
 
 
 def main():
@@ -783,7 +913,24 @@ def main():
     rings = load_rings()
     batch = Batch()
     build_mall(batch, rings)
+
+    wing_rings = {i: rings[i] for i in WINGS if i in rings}
+    seat, drop = seat_on_terrain(wing_rings)
+    if drop > 0.0:
+        for ring in wing_rings.values():
+            verts, faces = skirt(as_ccw(ring), -drop, 0.0)
+            batch.add(verts, faces, "Mall_Stucco")
+    log("terrain seat {:.2f} m, plinth {:.2f} m".format(seat, drop))
+
     obj = batch.to_object("GaisanoCountryMall")
+    # Bake the seat into the mesh, so banilad_city.gd instances this at the
+    # origin with no vertical correction of its own.
+    if seat:
+        obj.location.z = seat
+        bpy.ops.object.select_all(action="DESELECT")
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
     log("triangles: {:d}".format(batch.triangle_count()))
 
     OUT.parent.mkdir(parents=True, exist_ok=True)

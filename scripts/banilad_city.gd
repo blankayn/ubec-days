@@ -30,6 +30,8 @@ const SLUM_GROUND_PROBE := Vector2(200.0, -545.0)
 # The scanned mall replaces the procedural wings. Its covered walkway is a
 # separate object in the map GLB (Mall_Walkway) precisely so it survives this.
 const PROCEDURAL_MALL_NODE := "Gaisano Country Mall"
+# The wings arrive with a streamed tile, so the swap has to re-run per load.
+const TILE_STREAMER_NODE := ^"NavigationRegion3D/TileStreamer"
 # banilad_map/build_mall.py builds the mall at absolute map coordinates from
 # the surveyed OSM footprints, so it instances at the origin: no scale, no
 # rotation, and it is already sitting on z = 0 like the rest of the map.
@@ -157,17 +159,26 @@ func _ready() -> void:
 ## vertex and the ground, so it lands on the road surface rather than hovering
 ## over it or sinking into it, whatever the exporter chose for the origin.
 func _place_country_mall() -> void:
-	var procedural := find_child(PROCEDURAL_MALL_NODE, true, false) as Node3D
-	if procedural == null:
-		push_warning("procedural mall '%s' not found; skipping the swap" % PROCEDURAL_MALL_NODE)
-		return
-	# Hide it *and* take its collision out, or the ground probe below would
-	# find the old roof and stack the new mall on top of it.
-	procedural.visible = false
-	for body in procedural.find_children("*", "StaticBody3D", true, false):
-		for shape in body.find_children("*", "CollisionShape3D", true, false):
-			(shape as CollisionShape3D).disabled = true
+	# The wings ship inside a streamed tile, so hiding them once is not enough.
+	# Driving past the streamer's unload radius frees that tile, and the copy
+	# that arrives on the way back is visible again with its collision live --
+	# a second mall standing inside the scanned one. Re-apply on every load.
+	var streamer := get_node_or_null(TILE_STREAMER_NODE)
+	if streamer != null and streamer.has_signal("tile_loaded"):
+		streamer.tile_loaded.connect(_hide_procedural_mall_in)
+	else:
+		push_warning("no TileStreamer at %s; the procedural mall will reappear "
+			% TILE_STREAMER_NODE + "if its tile reloads")
+	if not _hide_procedural_mall_in("", self):
+		# Not an error: the tile simply is not resident yet, and the signal
+		# above will catch it when it arrives.
+		print("[mall] procedural wings not resident yet; will hide on tile load")
 	await get_tree().physics_frame
+
+	# Probe BEFORE the model joins the tree. Its meshes get trimesh collision
+	# below, so a ray cast afterwards lands on the mall's own roof rather than
+	# on the ground -- reading 49 m over terrain that is actually at 37.
+	var ground_y := _raycast_ground_y(MALL_GROUND_PROBE.x, MALL_GROUND_PROBE.y)
 
 	var mall := CountryMallAsset.instantiate() as Node3D
 	mall.name = "GaisanoCountryMallAsset"
@@ -175,18 +186,40 @@ func _place_country_mall() -> void:
 	mall.rotation.y = deg_to_rad(MALL_YAW_DEGREES)
 	add_child(mall)
 
-	var ground_y := _raycast_ground_y(MALL_GROUND_PROBE.x, MALL_GROUND_PROBE.y)
-	mall.global_position = Vector3(MALL_CENTRE.x, ground_y, MALL_CENTRE.z)
-	var lowest := _lowest_visual_point(mall)
-	if is_finite(lowest):
-		mall.global_position.y += ground_y - lowest
+	# build_mall.py seats the model on the terrain itself now and bakes the
+	# height into the mesh, so this instances at the origin untouched. The old
+	# probe-and-shift assumed a flat map: it read the ground at ONE point and
+	# slid the whole 200 m building to meet it, which on terrain that falls
+	# several metres across the footprint buried the high end and left the low
+	# end in the air. Correcting it again here would double the offset.
+	mall.global_position = MALL_CENTRE
 
 	for node in mall.find_children("*", "MeshInstance3D", true, false):
 		(node as MeshInstance3D).create_trimesh_collision()
 
-	print("BANILAD_MALL_PLACED ground=%.3f base_offset=%.3f final_y=%.3f" % [
-		ground_y, ground_y - lowest, mall.global_position.y,
+	# Reported against the ground under the footprint so a regression in
+	# build_mall.py's seating is visible here: the model's lowest point should
+	# sit just under the terrain it stands on, not metres above or below it.
+	var lowest := _lowest_visual_point(mall)
+	print("BANILAD_MALL_PLACED ground=%.3f lowest=%.3f gap=%.3f (seat baked in the mesh)" % [
+		ground_y, lowest, lowest - ground_y,
 	])
+
+
+## Hides the procedural mall wings anywhere under `node` and takes their
+## collision out, so the ground probe cannot land on the old roof. Returns
+## whether it found them. Shaped to double as a `tile_loaded` handler, hence the
+## unused key. Mall_Walkway is deliberately left alone: it is a separate object
+## precisely so it survives the swap.
+func _hide_procedural_mall_in(_key: String, node: Node) -> bool:
+	var procedural := node.find_child(PROCEDURAL_MALL_NODE, true, false) as Node3D
+	if procedural == null:
+		return false
+	procedural.visible = false
+	for body in procedural.find_children("*", "StaticBody3D", true, false):
+		for shape in body.find_children("*", "CollisionShape3D", true, false):
+			(shape as CollisionShape3D).disabled = true
+	return true
 
 
 ## Drops the informal-settlement district onto the map.

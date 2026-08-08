@@ -12,6 +12,13 @@ extends Node3D
 ## has not finished loading -- structurally impossible here rather than a thing
 ## to be timed carefully.
 
+## Emitted every time a tile becomes resident, including on a reload after the
+## player has driven out of range and back. Anything that edits tile contents --
+## hiding a mesh, disabling a collider -- has to listen to this rather than
+## reach in once at startup: the edit dies with the node when the tile is freed,
+## and the reloaded copy arrives untouched.
+signal tile_loaded(key: String, node: Node3D)
+
 const MANIFEST := "res://assets/maps/tiles.json"
 const TILE_DIR := "res://assets/maps/tiles/"
 
@@ -107,6 +114,7 @@ func _instantiate(key: String, packed: Variant) -> bool:
 	VertexAlbedo.apply(node)
 	add_child(node)
 	_loaded[key] = node
+	tile_loaded.emit(key, node)
 	return true
 
 

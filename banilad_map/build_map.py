@@ -63,6 +63,9 @@ TILES_DIR = PROJECT / "assets" / "maps" / "tiles"
 # silhouettes only, no props, no markings, no glazing. Without it the IT Park
 # towers pop in at the streaming radius and the city has no readable horizon.
 SKYLINE_MIN_HEIGHT = 25.0
+# How far inside the real outline the always-resident stand-in sits, so it can
+# never poke through the detailed landmark once that has streamed in.
+SKYLINE_INSET = 1.5
 
 # Ground mesh cell size. The ground is always-resident (it ships in
 # banilad_base.glb and never streams out), so this trades fidelity against a
@@ -81,6 +84,16 @@ SEA_LEVEL = 0.0
 
 LEVEL_HEIGHT = 3.3
 SEED = 20260731
+
+# Build a dead-flat world. Cebu's real elevation (Banilad ~33 m, hill roads to
+# ~165 m) is what the conforming ground, the road-height solve and the seated
+# buildings all exist to follow -- and following it faithfully still left the
+# ground reading as tilted facets at street level. Flattening removes the whole
+# class of problem: the ground, the road-collision plane and every building all
+# sit at z = 0, so nothing can trench, tilt or poke through. The elevation cache
+# is left on disk untouched; this simply does not consult it. Set False to bring
+# the terrain back.
+FLAT_WORLD = True
 
 DEFAULT_HEIGHTS = {
     "yes": 6.0, "house": 4.5, "residential": 7.0, "apartments": 18.0,
@@ -572,6 +585,21 @@ def parse_speed(cls, tags):
     return DEFAULT_SPEEDS.get(cls, 30)
 
 
+def is_truthy_tag(value):
+    """OSM booleans. `bridge=viaduct` and `tunnel=building_passage` are yes."""
+    if value is None:
+        return False
+    return str(value).strip().lower() not in ("", "no", "false", "0")
+
+
+def parse_layer(tags):
+    """OSM `layer`, which is a signed level, not a boolean. 0 when unusable."""
+    try:
+        return int(float(str(tags.get("layer", 0)).strip()))
+    except (TypeError, ValueError):
+        return 0
+
+
 def build_road_graph(elements):
     """Split OSM ways at shared nodes into a real network.
 
@@ -656,6 +684,14 @@ def build_road_graph(elements):
             "roundabout": str(tags.get("junction", "")).lower() == "roundabout",
             "speed": parse_speed(cls, tags),
             "way": el["id"],
+            # Grade separation. terrain.py needs this: a flyover deck and a
+            # tunnel bore are not ground, and feeding their heights into the
+            # ground solve drags the surface up to the deck or down to the
+            # bore. Carried on the edge rather than re-read from OSM later
+            # because the graph is what terrain sees.
+            "bridge": is_truthy_tag(tags.get("bridge")),
+            "tunnel": is_truthy_tag(tags.get("tunnel")),
+            "layer": parse_layer(tags),
         }
 
         cuts = [0]
@@ -817,10 +853,73 @@ def miter_offsets(pts, half):
 # Terrain height lookup, installed once the road graph has been solved. Flat
 # until then, so the module still works with no elevation cache.
 GROUND_AT = None
+# Installed once the Ground mesh has been built. drape() prefers it over the
+# field, so decals sit on the surface the player stands on rather than on the
+# surface it was derived from.
+GROUND_SURFACE = None
 
 
 def ground_at(x, y):
     return 0.0 if GROUND_AT is None else GROUND_AT(x, y)
+
+
+class SurfaceSampler:
+    """Height of a built triangle mesh at any (x, y), by point-in-triangle.
+
+    Exists so decals can be draped onto the ground the player actually walks
+    on rather than onto the field the ground was derived from. Those are not
+    the same surface: the mesh interpolates linearly between its vertices and
+    the field does not, so any gap between them shows up as a decal either sunk
+    into the ground or hovering over it, depending which way the error went.
+    Sampling the mesh removes the gap by definition, at any resolution.
+    """
+
+    # 100 m cells: measured on the current extent that is 665,282 index entries
+    # for 490,544 triangles, and the widest single triangle spans 16 cells. The
+    # conforming mesh has no long slivers to special-case.
+    CELL = 100.0
+
+    def __init__(self, verts, faces):
+        self.verts = verts
+        self.tris = []
+        for face in faces:
+            for k in range(1, len(face) - 1):
+                self.tris.append((face[0], face[k], face[k + 1]))
+        self.buckets = {}
+        for index, (a, b, c) in enumerate(self.tris):
+            xs = (verts[a][0], verts[b][0], verts[c][0])
+            ys = (verts[a][1], verts[b][1], verts[c][1])
+            for cx in range(int(min(xs) // self.CELL), int(max(xs) // self.CELL) + 1):
+                for cy in range(int(min(ys) // self.CELL), int(max(ys) // self.CELL) + 1):
+                    self.buckets.setdefault((cx, cy), []).append(index)
+
+    def __call__(self, x, y):
+        best = None
+        for index in self.buckets.get((int(x // self.CELL), int(y // self.CELL)), ()):
+            a, b, c = self.tris[index]
+            ax, ay, az = self.verts[a]
+            bx, by, bz = self.verts[b]
+            cx, cy, cz = self.verts[c]
+            det = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+            if abs(det) < 1e-12:
+                continue
+            wa = ((by - cy) * (x - cx) + (cx - bx) * (y - cy)) / det
+            wb = ((cy - ay) * (x - cx) + (ax - cx) * (y - cy)) / det
+            wc = 1.0 - wa - wb
+            if wa < -1e-6 or wb < -1e-6 or wc < -1e-6:
+                continue
+            here = wa * az + wb * bz + wc * cz
+            best = here if best is None else max(best, here)
+        return best
+
+
+def ground_height(x, y):
+    """The ground the player stands on, falling back to the field."""
+    if GROUND_SURFACE is not None:
+        here = GROUND_SURFACE(x, y)
+        if here is not None:
+            return here
+    return ground_at(x, y)
 
 
 def drape(verts):
@@ -832,9 +931,18 @@ def drape(verts):
     ground -- carriageways, sidewalks, markings, landuse, water -- goes through
     here.
 
-    Buildings deliberately do NOT: draping a footprint would tilt its roof down
-    the hill. They take an explicit base height instead, with a plinth down to
-    the lowest corner, which is how Cebu actually builds on a slope.
+    The height is the FIELD, not the built ground mesh. Draping on the mesh was
+    tried and is wrong for this: inside a corridor the mesh is held at the span
+    minimum so it can clear the dense layers riding on it, which turns a
+    climbing road into a staircase sitting below its own solved profile. The
+    road-graph guard caught it -- only 87.2% of graph nodes still landed on the
+    collision plane, misses reading `Roads_Collision@34.0 (wanted 36.6)`. The
+    carriageway has to keep the profile the height solve gave it; it is the
+    GROUND's job to conform to the road, not the other way round.
+
+    Buildings deliberately do NOT drape: it would tilt a roof down the hill.
+    They take an explicit base height instead, with a plinth down to the lowest
+    corner, which is how Cebu actually builds on a slope.
     """
     if GROUND_AT is None:
         return verts
@@ -1063,6 +1171,200 @@ def lift(verts, dz):
     if not dz:
         return verts
     return [(x, y, z + dz) for x, y, z in verts]
+
+
+# Ground held level this far outside the kerb, then GROUND_VERGE to climb back
+# to natural terrain. The shoulder has to clear the SIDEWALK, not just the
+# tarmac: a kerbed walk is SIDEWALK_WIDTH wide starting at the kerb line, so a
+# shoulder narrower than that leaves its outer strip standing in the ramp.
+GROUND_SHOULDER = SIDEWALK_WIDTH + 0.6
+GROUND_VERGE = 6.0
+# Spacing at which the field is sampled ALONG a span to find its floor.
+GROUND_SPAN_STEP = 6.0
+# Spacing of the sampling grid used to find the floor under a lattice cell.
+GROUND_FINE = 25.0
+# How far below the carriageway the ground is held, so the road, sidewalk and
+# marking decals draped on the field all clear it. It only needs to beat the
+# tallest of those layer_z offsets (Z_MARKING = 0.17) plus room for the field's
+# gentle curvature between stations; 0.3 m does both without a visible step up
+# to the open ground beside the corridor.
+GROUND_CLEARANCE = 0.3
+# Only OSM spans LONGER than this get an intermediate ground station. The field
+# along a road is already close to the linear road profile, so short spans need
+# nothing; splitting only the long ones keeps the always-resident mesh (and the
+# CDT that builds it) close to their old cost while still stopping a long span
+# from chording over a dip. See conforming_ground for why the old span-minimum
+# answer to the same chording problem trenched the ground instead.
+GROUND_STATION_STEP = 30.0
+
+
+def conforming_ground(ways_list, half_extent, cell):
+    """Ground vertices, triangulated to sit UNDER every carriageway.
+
+    A uniform lattice cannot do this. The carriageway is draped to
+    ground_at + Z_ROAD_MAJOR, so the ground has 13 cm of headroom, while a
+    lattice samples a field that has ridges running along every road and swings
+    far more than that between its nodes. Measured on the Cebu extract, a 100 m
+    lattice buried 42% of the road network by 0.81 m on average, and refining it
+    to 12.5 m still buried 7.4% for 863k vertices. Resolution is not the fix.
+
+    What works is following the road at station resolution and holding the
+    ground a fixed clearance below it. The corridor is densified so its stations
+    track the field closely, and each is dropped GROUND_CLEARANCE under the
+    lowest point draped across the carriageway there. Both surfaces are then
+    near-linear over short spans and the ground stays just under the tarmac
+    without diving below the open ground beside it.
+
+    Three things hold the invariant, and all three were needed:
+      * a station takes the LOWEST of the three points ribbon() drapes across
+        the carriageway, so a field tilted across it cannot lift the ground
+        into the outer lane -- but only ACROSS, never along the span, which is
+        what used to trench the corridor;
+      * corridor lines are passed as CDT constraints, or a long thin corridor
+        lets the triangulator bridge across the tarmac at verge height;
+      * every output vertex is re-clamped, because the CDT splits crossing
+        constraints at junctions and those new vertices have no source height.
+
+    Returns (verts, faces).
+    """
+    from mathutils import Vector
+    from mathutils.geometry import delaunay_2d_cdt
+
+    # Footways included. They are draped surfaces like any other and get no
+    # protection at all if they are left out of the corridor -- measured at
+    # 19.4% of footway geometry buried, by up to 6.1 m.
+    lines = []
+    for el in ways_list:
+        cls = (el.get("tags") or {}).get("highway")
+        if not cls:
+            continue
+        pts = dedupe(way_points(el))
+        if len(pts) < 2:
+            continue
+        lines.append((pts, road_width(cls, el.get("tags") or {})))
+
+    # Pass 1: the floor each carriageway needs at each of its own stations.
+    index = SpatialIndex(cell=cell)
+    per_line = []
+    for pts, width in lines:
+        # Densify first, so the ground follows the field UNDER the road at
+        # station resolution. The draped layers on it carry far denser vertices
+        # than the way does -- dashed_line emits one every 3 m, sidewalk runs
+        # are resampled at 1.5 m -- and each follows the field exactly. Left on
+        # a straight chord between OSM points tens of metres apart, the ground
+        # stands through the layers that dip with the field between them.
+        #
+        # The previous answer to that was to sink each station to the LOWEST
+        # field height over its whole span. That cleared the dips but trenched
+        # the ground: a road that merely descended dropped its entire corridor
+        # to the span's low end, leaving the open ground beside it standing
+        # several metres proud -- which is exactly the torn surface the mall
+        # forecourt showed, where a large lot lets that ground show at all.
+        # Following the field at station resolution clears the dips without the
+        # trench.
+        pts = densify(pts, GROUND_STATION_STEP)
+        offsets = miter_offsets(pts, width * 0.5)
+        bases = []
+        for p, o in zip(pts, offsets):
+            # The LOWEST of the three points ribbon() drapes across the
+            # carriageway here, so a field tilted across the road cannot lift
+            # the ground into the outer lane; then a fixed clearance so the
+            # decals sit above it. A CROSS minimum only -- never an along-span
+            # one, which is what trenched.
+            cross = min(ground_at(p[0], p[1]),
+                        ground_at(p[0] + o[0], p[1] + o[1]),
+                        ground_at(p[0] - o[0], p[1] - o[1]))
+            bases.append(cross - GROUND_CLEARANCE)
+        per_line.append((pts, width, offsets, bases))
+        reach = width * 0.5 + GROUND_SHOULDER + GROUND_VERGE
+        for i in range(len(pts) - 1):
+            index.add_segment(pts[i], pts[i + 1],
+                              (pts[i], pts[i + 1], reach, bases[i], bases[i + 1]))
+
+    def floor_at(x, y, start):
+        """Lowest carriageway height among corridors covering this point."""
+        best = start
+        for p0, p1, reach, b0, b1 in index.near(x, y):
+            dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+            length_sq = dx * dx + dy * dy
+            t = 0.0 if length_sq < 1e-12 else max(0.0, min(
+                1.0, ((x - p0[0]) * dx + (y - p0[1]) * dy) / length_sq))
+            if math.dist((x, y), (p0[0] + dx * t, p0[1] + dy * t)) <= reach:
+                here = b0 + (b1 - b0) * t
+                if best is None or here < best:
+                    best = here
+        return best
+
+    points = []
+    heights_in = []
+    constraints = []
+    for pts, width, offsets, bases in per_line:
+        half = width * 0.5 + GROUND_SHOULDER
+        lanes = [[] for _ in range(5)]
+        for i, (p, o) in enumerate(zip(pts, offsets)):
+            length = math.hypot(o[0], o[1]) or 1.0
+            nx, ny = o[0] / length, o[1] / length
+            base = bases[i]
+            for slot, dist in enumerate((0.0, half, -half)):
+                x, y = p[0] + nx * dist, p[1] + ny * dist
+                lanes[slot].append(len(points))
+                points.append((x, y))
+                heights_in.append(floor_at(x, y, base))
+            for slot, dist in enumerate((half + GROUND_VERGE,
+                                         -(half + GROUND_VERGE)), start=3):
+                x, y = p[0] + nx * dist, p[1] + ny * dist
+                lanes[slot].append(len(points))
+                points.append((x, y))
+                heights_in.append(floor_at(x, y, min(ground_at(x, y), base)))
+        for lane in lanes:
+            for i in range(len(lane) - 1):
+                constraints.append((lane[i], lane[i + 1]))
+    road_count = len(points)
+
+    # Lattice nodes sit on the field, plainly. An earlier version lowered each
+    # one to the floor of its own neighbourhood, to stop the patch bulging over
+    # anything draped on it. That traded burial for the opposite fault: the
+    # ground sank up to 1.8 m under the mall forecourt and every decal draped
+    # on the FIELD -- car park, its bays, the walkway -- was left hanging over
+    # it. drape() now samples this mesh instead of the field, which removes the
+    # need for either compromise.
+    # Area decals get vertices too, for the same reason the carriageways do.
+    # A landuse polygon is draped on the field and its outline can run right
+    # across the middle of a 100 m lattice cell, where the patch is free to
+    # bulge over it -- measured at 11.2% of landuse geometry buried, by up to
+    # 19.9 m. Putting the ground through the outline removes the gap along it.
+    for el in ways_list:
+        tags = el.get("tags") or {}
+        if not (tags.get("landuse") or tags.get("leisure")) or "building" in tags:
+            continue
+        pts = way_points(el)
+        if not is_closed(pts):
+            continue
+        for x, y in dedupe(pts[:-1]):
+            if floor_at(x, y, None) is None:      # corridors already own theirs
+                points.append((x, y))
+                heights_in.append(ground_at(x, y))
+
+    steps = int(math.ceil(2 * half_extent / cell))
+    for row in range(steps + 1):
+        y = -half_extent + row * cell
+        for col in range(steps + 1):
+            x = -half_extent + col * cell
+            if floor_at(x, y, None) is None:      # outside every corridor
+                points.append((x, y))
+                heights_in.append(ground_at(x, y))
+
+    out_verts, _edges, out_faces, vert_orig, _eo, _fo = delaunay_2d_cdt(
+        [Vector(p) for p in points], constraints, [], 0, 1e-4)
+
+    verts = []
+    for i, v in enumerate(out_verts):
+        srcs = vert_orig[i]
+        carried = min(heights_in[s] for s in srcs) if srcs else ground_at(v.x, v.y)
+        verts.append((v.x, v.y, floor_at(v.x, v.y, carried)))
+    log("  ground: {:d} road stations, {:d} constraints, {:d} verts, {:d} tris".format(
+        road_count, len(constraints), len(verts), len(out_faces)))
+    return verts, [tuple(f) for f in out_faces]
 
 
 def ground_span(pts):
@@ -2128,8 +2430,20 @@ def build_country_mall(solid, lot_batch, walk_batch, mats, rings, road_lines):
             px = a[0] + (b[0] - a[0]) * t
             py = a[1] + (b[1] - a[1]) * t
             for side in (-width * 0.42, width * 0.42):
-                v, f = box(px + nx * side, py + ny * side,
-                           Z_BUILDING_BASE, MALL_WALKWAY_HEIGHT, 0.16, 0.16)
+                # Each post runs from the ground UNDER IT up to the canopy. The
+                # canopy is rigid, seated with the mall on its high corner, so
+                # a post starting at Z_BUILDING_BASE starts at that seat -- and
+                # over ground that falls away from it the whole walkway hangs
+                # in the air. The mall itself gets a plinth for exactly this;
+                # the walkway had nothing. Everything here is written through a
+                # LiftedBatch, so its dz is the seat these depths are relative
+                # to, and the 0.25 m is embedment so a post never floats on a
+                # rise between samples.
+                foot_x, foot_y = px + nx * side, py + ny * side
+                seat = getattr(walk_batch, "dz", 0.0)
+                foot_z = min(Z_BUILDING_BASE,
+                             ground_height(foot_x, foot_y) - seat) - 0.25
+                v, f = box(foot_x, foot_y, foot_z, MALL_WALKWAY_HEIGHT, 0.16, 0.16)
                 walk_batch.add(v, f, mats["Mall_Trim"])
         v, f = raised_ribbon([a, b], width, MALL_WALKWAY_HEIGHT, 0.5)
         walk_batch.add(v, f, mats["Mall_Walkway"])
@@ -2533,27 +2847,65 @@ class TiledBatch:
         return made
 
 
-def skyline_silhouette(batch, obj, material):
+def as_ccw_ring(ring):
+    """offset_ring shrinks a counter-clockwise ring on a positive distance."""
+    return ring if signed_area(ring) >= 0 else ring[::-1]
+
+
+def skyline_silhouette(batch, obj, material, rings=None):
     """Add a coarse prism for a hand-authored landmark tall enough to matter.
 
     The procedural building loop feeds the skyline with real footprints. The
-    three hand-modelled landmarks are single finished meshes by the time we get
-    here, so they contribute a convex-hull extrusion instead -- blobby up close,
-    indistinguishable at the kilometre where it is the only thing being drawn.
+    hand-modelled landmarks are single finished meshes by the time we get here,
+    so they contribute an extrusion of their outline instead -- coarse up
+    close, indistinguishable at the kilometre where it is the only thing being
+    drawn. It lives in the always-resident base, so it still reads when the
+    landmark's own detail tile has not streamed in.
+
+    Three things here did not survive terrain landing, and together they turned
+    this from a distant stand-in into a grey box that swallowed the building:
+
+    * `top` is a height above SEA LEVEL now, not above the building's base. A
+      20 m mall standing on a 37 m seat measured as 58 m, so the
+      SKYLINE_MIN_HEIGHT test stopped filtering anything -- every structure in
+      the city cleared 25 m.
+    * the extrusion ran from Z_BUILDING_BASE, i.e. z = 0, so the mass started
+      at sea level and rose through the terrain to the roof.
+    * a CONVEX HULL of a courtyard building spans its courtyard. Measured on
+      Gaisano that was 37 faces covering 69,350 m2 from z 0.0 to 50.8, sitting
+      over the real mall and hiding every elevation it has.
+
+    So: measure height against the object's own base, stand the mass on that
+    base, prefer the real footprint rings when the caller can supply them, and
+    inset whatever outline is used so the stand-in is strictly INSIDE the real
+    geometry and cannot occlude it when the detail is present.
     """
     if obj is None or not obj.data.vertices:
         return False
     verts = obj.data.vertices
     top = max(v.co.z for v in verts)
-    if top < SKYLINE_MIN_HEIGHT:
+    base = min(v.co.z for v in verts)
+    if top - base < SKYLINE_MIN_HEIGHT:
         return False
-    ring = convex_hull([(round(v.co.x, 1), round(v.co.y, 1)) for v in verts])
-    if len(ring) < 3:
-        return False
-    v, f = walls(ring, Z_BUILDING_BASE, top)
-    batch.add(v, f, material)
-    v, f = parapet_roof(ring, top)
-    batch.add(v, f, material)
+
+    outlines = []
+    for ring in (rings or []):
+        if len(ring) >= 3:
+            shrunk = offset_ring(as_ccw_ring(ring), SKYLINE_INSET)
+            if len(shrunk) >= 3:
+                outlines.append(shrunk)
+    if not outlines:
+        hull = convex_hull([(round(v.co.x, 1), round(v.co.y, 1)) for v in verts])
+        if len(hull) < 3:
+            return False
+        shrunk = offset_ring(as_ccw_ring(hull), SKYLINE_INSET)
+        outlines = [shrunk if len(shrunk) >= 3 else hull]
+
+    for ring in outlines:
+        v, f = walls(ring, base, top)
+        batch.add(v, f, material)
+        v, f = parapet_roof(ring, top)
+        batch.add(v, f, material)
     return True
 
 
@@ -2613,18 +2965,28 @@ def main():
     # piece of geometry below is placed on them. Solving it inline rather than
     # as a post-step matters because the graph is rebuilt from scratch on every
     # run, so anything written to it afterwards is overwritten next time.
-    global GROUND_AT
+    global GROUND_AT, GROUND_SURFACE
     graph, graph_skipped = build_road_graph(elements)
     height_report = None
-    try:
-        dem_field = terrain.PointField(terrain.load_dem())
-        height_report = terrain.solve_node_heights(graph, dem_field)
-        GROUND_AT = terrain.ground_sampler(graph, dem_field)
-    except SystemExit as exc:
-        # No elevation cache: build the old flat map rather than fail outright,
-        # and say so loudly enough that nobody ships it by accident.
+    if FLAT_WORLD:
+        # Skip the terrain solve entirely. GROUND_AT stays None, so ground_at()
+        # returns 0 everywhere, drape() is a no-op, and the ground falls to the
+        # single flat quad below -- exactly the path a missing elevation cache
+        # takes. The graph nodes keep the flat Z_ROAD_COLLISION height they were
+        # built with, so the road-collision plane the player spawns onto is flat
+        # too and agrees with the visible ground.
         GROUND_AT = None
-        log("WARNING: terrain unavailable ({!s}); building FLAT".format(exc))
+        log("FLAT_WORLD: terrain elevation disabled, building dead flat")
+    else:
+        try:
+            dem_field = terrain.PointField(terrain.load_dem())
+            height_report = terrain.solve_node_heights(graph, dem_field)
+            GROUND_AT = terrain.ground_sampler(graph, dem_field)
+        except SystemExit as exc:
+            # No elevation cache: build the old flat map rather than fail
+            # outright, and say so loudly enough that nobody ships it by accident.
+            GROUND_AT = None
+            log("WARNING: terrain unavailable ({!s}); building FLAT".format(exc))
 
     # --- Ground ------------------------------------------------------------
     g = ground_half_extent(ways)
@@ -2635,29 +2997,20 @@ def main():
                    [(0, 1, 2, 3)], mats["Ground"])
         log("ground plane: {:.0f} x {:.0f} m, flat (no elevation data)".format(2 * g, 2 * g))
     else:
-        # A grid rather than one quad, sampled from the solved road heights.
-        # 100 m cells: fine enough that the ground meets the carriageways
-        # cleanly (IDW near a road is dominated by that road), coarse enough
-        # that this stays affordable as an always-resident mesh -- it is in
-        # banilad_base.glb and never streams out.
-        steps = int(math.ceil(2 * g / GROUND_CELL))
-        verts = []
-        for row in range(steps + 1):
-            y = -g + row * GROUND_CELL
-            for col in range(steps + 1):
-                x = -g + col * GROUND_CELL
-                verts.append((x, y, ground_at(x, y)))
-        stride = steps + 1
-        faces = []
-        for row in range(steps):
-            for col in range(steps):
-                base = row * stride + col
-                faces.append((base, base + 1, base + stride + 1, base + stride))
+        # Conforming, not a lattice: the ground carries vertices on every
+        # carriageway so it can sit under the tarmac instead of through it.
+        # See conforming_ground() for why resolution alone cannot do this.
+        verts, faces = conforming_ground(ways, g, GROUND_CELL)
         ground.add(verts, faces, mats["Ground"],
                    ground_colors(verts, terrain.road_field(graph)))
+        # Everything draped from here on rides this mesh, not the field it came
+        # from. Landuse, water, roads, sidewalks and markings are all built
+        # below, so the sampler is in place before any of them ask.
+        GROUND_SURFACE = SurfaceSampler(verts, faces)
         lows = [v[2] for v in verts]
-        log("ground plane: {:.0f} x {:.0f} m, {:d} x {:d} cells, {:.1f}..{:.1f} m".format(
-            2 * g, 2 * g, steps, steps, min(lows), max(lows)))
+        log("ground: {:.0f} x {:.0f} m, conforming, {:.1f}..{:.1f} m, "
+            "{:d} tris indexed for draping".format(
+                2 * g, 2 * g, min(lows), max(lows), len(GROUND_SURFACE.tris)))
     ground.to_object("Ground", col_ground)
 
     # --- Sea ---------------------------------------------------------------
@@ -3083,14 +3436,52 @@ def main():
     # each is seated on the terrain under its own footprint. One height per
     # building, not per vertex: these are flat-platform structures and draping
     # would warp their floor plates.
-    uc_seat = ground_at(51.0, 449.0)
-    mall_seat = ground_at(-87.0, 519.0)
-    bloc_seat = ground_at(-462.0, -419.0)
+    #
+    # Seated on the HIGH corner with a plinth down to the low one, the same
+    # rule the procedural buildings above use. A single ground_at() probe at
+    # one arbitrary point was doing neither: wherever the terrain fell away
+    # from that point the landmark hung in the air on an unlit underside --
+    # measured at 5.31 m and 17,125 m2 under the Central Bloc podium, which is
+    # the largest single black surface on the map.
+    def seat_and_plinth(rings):
+        spans = [ground_span(r) for r in rings if len(r) >= 3]
+        if not spans:
+            return ground_at(0.0, 0.0), 0.0
+        low = min(s[0] for s in spans)
+        high = max(s[1] for s in spans)
+        return high, (high - low) + PLINTH_MARGIN
+
+    def add_plinth(batch, rings, drop, material):
+        """Skirt from the seat down past the lowest ground under the footprint.
+
+        Written through the same LiftedBatch as the building, so these depths
+        are relative to its seat.
+        """
+        if drop <= 0.0:
+            return
+        for ring in rings:
+            if len(ring) < 3:
+                continue
+            v, f = walls(ring, -drop, Z_BUILDING_BASE)
+            batch.add(v, f, material)
+
+    uc_rings = [landmark_rings[w] for w in sorted(UC_WAY_IDS)
+                if w in landmark_rings]
+    mall_rings = [landmark_rings[w] for w in sorted(MALL_WINGS)
+                  if w in landmark_rings]
+    bloc_rings = [landmark_rings[w] for w in sorted(CENTRAL_BLOC)
+                  if w in landmark_rings]
+    uc_seat, uc_drop = seat_and_plinth(uc_rings)
+    mall_seat, mall_drop = seat_and_plinth(mall_rings)
+    bloc_seat, bloc_drop = seat_and_plinth(bloc_rings)
+    log("landmark seats: UC {:.1f} m (+{:.1f} plinth), Mall {:.1f} m (+{:.1f}), "
+        "Bloc {:.1f} m (+{:.1f})".format(uc_seat, uc_drop, mall_seat, mall_drop,
+                                         bloc_seat, bloc_drop))
 
     uc_batch = MeshBatch()
-    build_uc_banilad(LiftedBatch(uc_batch, uc_seat), mats,
-                     [landmark_rings[w] for w in sorted(UC_WAY_IDS)
-                      if w in landmark_rings])
+    uc_lifted = LiftedBatch(uc_batch, uc_seat)
+    build_uc_banilad(uc_lifted, mats, uc_rings)
+    add_plinth(uc_lifted, uc_rings, uc_drop, mats["UC_Podium"])
     uc_obj = uc_batch.to_object("University of Cebu - Banilad Campus", col_landmarks)
 
     mall_batch = MeshBatch()
@@ -3100,15 +3491,19 @@ def main():
     # over 4.2 m of fall, so a rigid slab at one height floats clear of the
     # tarmac at the low end and buries it at the high end. The mall itself and
     # its covered walkway stay rigid -- they have floor plates.
-    build_country_mall(LiftedBatch(mall_batch, mall_seat),
+    mall_lifted = LiftedBatch(mall_batch, mall_seat)
+    build_country_mall(mall_lifted,
                        DrapedBatch(mall_lot),
                        LiftedBatch(mall_walk, mall_seat), mats, landmark_rings,
                        road_lines)
+    add_plinth(mall_lifted, mall_rings, mall_drop, mats["Mall_Wall"])
     mall_obj = mall_batch.to_object("Gaisano Country Mall", col_landmarks)
     walk_obj = mall_walk.to_object("Mall_Walkway", col_landmarks)
 
     bloc_batch = MeshBatch()
-    build_central_bloc(LiftedBatch(bloc_batch, bloc_seat), mats, landmark_rings)
+    bloc_lifted = LiftedBatch(bloc_batch, bloc_seat)
+    build_central_bloc(bloc_lifted, mats, landmark_rings)
+    add_plinth(bloc_lifted, bloc_rings, bloc_drop, mats["Bloc_Podium"])
     bloc_obj = bloc_batch.to_object("Ayala Malls Central Bloc", col_landmarks)
 
     landmark_objs = build_city_landmarks(ways, landmark_rings, mats,
@@ -3118,12 +3513,22 @@ def main():
     mall_lot.to_objects(col_ground)
 
     # The hand-authored landmarks are finished single meshes by now, so they
-    # cannot feed the skyline from the building loop. Tall ones contribute a
-    # hull extrusion instead. Ayala Malls Central Bloc is the one that matters:
-    # at 74 m and ~1 km from the Banilad spawn it is the horizon.
+    # cannot feed the skyline from the building loop. Tall ones contribute an
+    # extrusion of their outline instead. Ayala Malls Central Bloc is the one
+    # that matters: at 74 m and ~1 km from the Banilad spawn it is the horizon.
+    #
+    # Their real footprints are handed over where we have them. A convex hull
+    # of a courtyard building spans the courtyard, which is how the mall ended
+    # up inside a 69,350 m2 grey box.
+    skyline_rings = {
+        id(uc_obj): uc_rings,
+        id(mall_obj): mall_rings,
+        id(bloc_obj): bloc_rings,
+    }
     for obj in [uc_obj, mall_obj, walk_obj, bloc_obj] + landmark_objs:
         stamp_tile(obj)
-        if skyline_silhouette(skyline, obj, mats["Wall_Concrete_1"]):
+        if skyline_silhouette(skyline, obj, mats["Wall_Concrete_1"],
+                              skyline_rings.get(id(obj))):
             skyline_count += 1
 
     infill_batch = TiledBatch("Buildings_Infill")

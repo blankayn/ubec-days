@@ -68,6 +68,21 @@ IDW_NEIGHBOURS = 8
 IDW_POWER = 2.0
 
 
+def is_grade_separated(edge):
+    """True if this edge's surface is a deck or a bore rather than the ground.
+
+    Everything in this module solves for GROUND. A flyover carriageway is
+    metres above the ground it crosses and a tunnel is metres below it, so
+    letting either contribute drags the solved surface to the wrong level --
+    and because the ground is then interpolated outward from those heights, one
+    viaduct distorts the terrain for a couple of hundred metres around it.
+
+    The Cebu extract carries 66 bridge, 16 tunnel and 105 layered driveable
+    ways, so this is not a corner case.
+    """
+    return bool(edge.get("bridge") or edge.get("tunnel") or edge.get("layer", 0))
+
+
 class PointField:
     """Uniform-grid index over scattered (x, y, value) samples.
 
@@ -141,7 +156,15 @@ def solve_node_heights(graph, dem_field):
     # --- adjacency, with edge lengths and per-edge grade limits ------------
     neighbours = [[] for _ in nodes]
     spans = []
+    separated = 0
     for edge in edges:
+        # A viaduct spanning a valley would otherwise smooth the valley flat,
+        # and its grade limit would be applied to a deck that is allowed to be
+        # level over ground that is not. Nodes reachable only across such edges
+        # simply keep their raw DEM height, which is the ground there.
+        if is_grade_separated(edge):
+            separated += 1
+            continue
         pts = edge["pts"]
         length = 0.0
         for i in range(len(pts) - 1):
@@ -204,6 +227,7 @@ def solve_node_heights(graph, dem_field):
         "mean_shift": round(sum(moved) / len(moved), 3),
         "max_shift": round(max(moved), 2),
         "grade_fixes": clamped,
+        "grade_separated_edges": separated,
     }
 
 
@@ -217,6 +241,10 @@ def road_field(graph):
     nodes = graph["nodes"]
     samples = []
     for edge in graph["edges"]:
+        # Same reason as the height solve: a deck is not ground, and this index
+        # is what the ground surface is interpolated from.
+        if is_grade_separated(edge):
+            continue
         pts = edge["pts"]
         ha = nodes[edge["a"]]["y"]
         hb = nodes[edge["b"]]["y"]

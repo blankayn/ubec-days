@@ -74,7 +74,7 @@ const TELEPORTS: Array[Dictionary] = [
 	{"name": "University of Cebu", "area": "Banilad", "at": Vector2(15.8, -415.8)},
 	{"name": "Cebu IT Park", "area": "Lahug  ·  Garden Bloc", "at": Vector2(-625.0, 299.0)},
 	{"name": "Ayala Malls Central Bloc", "area": "Cebu IT Park", "at": Vector2(-466.9, 514.4)},
-	{"name": "Ayala Center Cebu", "area": "Cebu Business Park", "at": Vector2(-677.0, 1930.0)},
+	{"name": "Ayala Center Cebu", "area": "Cebu Business Park", "at": Vector2(-631.2, 2018.0)},
 	{"name": "SM City Cebu", "area": "North Reclamation", "at": Vector2(743.0, 2430.0)},
 	{"name": "Fuente Osmeña Circle", "area": "Uptown", "at": Vector2(-2008.0, 2811.3)},
 	{"name": "Metro Colon", "area": "Downtown Colon", "at": Vector2(-1423.0, 4215.2)},

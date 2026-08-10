@@ -18,6 +18,7 @@ const CBlockEdwardScene := preload("res://assets/npcs/cblock_edward_npc.tscn")
 const DrivableVehicleScript := preload("res://scripts/vehicle_body.gd")
 const CountryMallAsset := preload("res://assets/buildings/gaisano_country_mall.glb")
 const SlumAsset := preload("res://assets/buildings/banilad_slum.glb")
+const MetroColonAsset := preload("res://assets/buildings/metro_colon.glb")
 
 # The informal-settlement district, built from the modular house kit by
 # tools/build_slum.py at absolute map coordinates, so it instances at the origin
@@ -42,6 +43,25 @@ const MALL_YAW_DEGREES := 0.0
 # building itself stands over here, so this is the spot that has to be level
 # with its base.
 const MALL_GROUND_PROBE := Vector2(-104.6, -568.4)
+
+# --- Metro Department Store, Colon x Juan Luna --------------------------------
+# The hand-built model replaces the procedural landmark of the same name. Its
+# geometry is centred on the OSM footprint centroid, Blender (-1442.1, -4266.0);
+# Godot z is the negation of Blender y.
+const METRO_CENTRE := Vector3(-1442.1, 0.0, 4266.0)
+# Probe out in the street, clear of the footprint, or the ray lands on Metro's
+# own roof once the model is in the tree.
+const METRO_GROUND_PROBE := Vector2(-1408.0, 4266.0)
+# The procedural landmark this replaces. build_map.py emits it under this exact
+# name; prep_godot may append a `__rXcY` tile suffix, so it is matched by prefix.
+# Both procedural landmarks this asset replaces. The rounded block opposite is
+# a SEPARATE object from Metro, and leaving it in stands the old one inside the
+# new one -- the same trap the mall's wings documented.
+const PROCEDURAL_METRO_NODES := [
+	"Metro Department Store*",
+	"Colon Corner Block*",
+]
+const METRO_TEX := "res://assets/buildings/metro_tex/"
 
 # Gov. M. Cuenco Ave runs at bearing 80.7 degrees, which is this heading in
 # Godot: nose down the avenue, away from Gaisano.
@@ -147,6 +167,7 @@ func _ready() -> void:
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	await _place_country_mall()
+	_place_metro_colon()
 	_place_slum()
 	_spawn_street_npcs()
 	_spawn_vehicles()
@@ -220,6 +241,157 @@ func _hide_procedural_mall_in(_key: String, node: Node) -> bool:
 		for shape in body.find_children("*", "CollisionShape3D", true, false):
 			(shape as CollisionShape3D).disabled = true
 	return true
+
+
+## Swaps the procedural Metro Department Store for the hand-built model.
+##
+## Same contract as the mall: hide the generated landmark on every tile load
+## (the streamer frees and re-adds that tile, and the fresh copy arrives
+## visible), then instance the authored model at the footprint centroid.
+func _place_metro_colon() -> void:
+	var streamer := get_node_or_null(TILE_STREAMER_NODE)
+	if streamer != null and streamer.has_signal("tile_loaded"):
+		streamer.tile_loaded.connect(_hide_procedural_metro_in)
+	if not _hide_procedural_metro_in("", self):
+		# Expected from the Banilad spawn: Colon is ~4.8 km away, so its tile is
+		# nowhere near resident. The signal catches it on arrival.
+		print("[metro] procedural landmark not resident yet; will hide on tile load")
+
+	# Probe BEFORE the model joins the tree, for the reason the mall documents.
+	var ground_y := _raycast_ground_y(METRO_GROUND_PROBE.x, METRO_GROUND_PROBE.y)
+
+	var metro := MetroColonAsset.instantiate() as Node3D
+	metro.name = "MetroColon"
+	_apply_metro_materials(metro)
+	add_child(metro)
+	metro.global_position = Vector3(METRO_CENTRE.x, ground_y, METRO_CENTRE.z)
+
+	# The model is built from z=0 up, so seat its lowest vertex on the road.
+	var lowest := _lowest_visual_point(metro)
+	if is_finite(lowest):
+		metro.global_position.y += ground_y - lowest
+
+	print("METRO_COLON_PLACED ground=%.2f final_y=%.2f at=(%.1f, %.1f)" % [
+		ground_y, metro.global_position.y, METRO_CENTRE.x, METRO_CENTRE.z,
+	])
+
+
+func _hide_procedural_metro_in(_key: String, node: Node) -> bool:
+	var found := false
+	for pattern in PROCEDURAL_METRO_NODES:
+		for n in node.find_children(pattern, "", true, false):
+			var landmark := n as Node3D
+			if landmark == null or landmark.name == "MetroColon":
+				continue
+			landmark.visible = false
+			for body in landmark.find_children("*", "StaticBody3D", true, false):
+				for shape in body.find_children("*", "CollisionShape3D", true, false):
+					(shape as CollisionShape3D).disabled = true
+			found = true
+	return found
+
+
+## Textured PBR materials for the Metro model.
+##
+## The glb carries material NAMES but no maps, so each surface is re-dressed
+## here. Walls use world triplanar (the model has no UV unwrap beyond the
+## signage panels); signage uses the panel's own UVs, and the METRO letters are
+## an alpha SCISSOR cut-out so they sit on the wall with no signboard behind.
+func _apply_metro_materials(root_node: Node) -> void:
+	var wall := StandardMaterial3D.new()
+	wall.albedo_texture = load(METRO_TEX + "metro_wall.png")
+	wall.normal_enabled = true
+	wall.normal_texture = load(METRO_TEX + "plaster_nrm.jpg")
+	wall.normal_scale = 0.45
+	wall.roughness_texture = load(METRO_TEX + "plaster_rgh.jpg")
+	wall.uv1_triplanar = true
+	wall.uv1_world_triplanar = true
+	wall.uv1_scale = Vector3(0.3, 0.3, 0.3)
+
+	var mats := {}
+	for entry in [
+		["Metro_Panel", Color(0.88, 0.88, 0.86)],
+		["Metro_Pilaster", Color(1.0, 1.0, 0.98)],
+		["Metro_Parapet", Color(0.78, 0.78, 0.76)],
+	]:
+		var m := wall.duplicate() as StandardMaterial3D
+		m.albedo_color = entry[1]
+		mats[entry[0]] = m
+
+	# The block opposite is older grey concrete, so it gets its own map rather
+	# than Metro's whitened wall.
+	var conc := StandardMaterial3D.new()
+	conc.albedo_texture = load(METRO_TEX + "concrete_alb.jpg")
+	conc.albedo_color = Color(0.70, 0.69, 0.66)
+	conc.normal_enabled = true
+	conc.normal_texture = load(METRO_TEX + "concrete_nrm.jpg")
+	conc.normal_scale = 0.45
+	conc.roughness_texture = load(METRO_TEX + "concrete_rgh.jpg")
+	conc.uv1_triplanar = true
+	conc.uv1_world_triplanar = true
+	conc.uv1_scale = Vector3(0.3, 0.3, 0.3)
+	mats["Corner_Wall"] = conc
+
+	mats["Metro_Sign"] = _metro_uv_material("metro_sign.png", true)
+	mats["Metro_Banner"] = _metro_uv_material("metro_banner.png", false)
+	mats["Neighbour_Ad"] = _metro_uv_material("signage.png", false)
+	for entry in [
+		["Metro_Glass", Color(0.20, 0.21, 0.22), 0.30],
+		["Metro_Slot", Color(0.11, 0.12, 0.14), 0.80],
+		["Metro_Fascia", Color(0.74, 0.72, 0.66), 0.85],
+		["Metro_Billboard", Color(0.09, 0.20, 0.48), 0.82],
+		["Billboard_Frame", Color(0.16, 0.15, 0.14), 0.85],
+		["Metro_Plant", Color(0.38, 0.38, 0.40), 0.80],
+		["Metro_Roof", Color(0.62, 0.61, 0.58), 0.92],
+		["Pole", Color(0.30, 0.30, 0.30), 0.70],
+		# the block opposite: lit fascia + sun-faded advertising bands
+		["Corner_Fascia", Color(0.72, 0.60, 0.22), 0.75],
+		["Ad_Navy", Color(0.14, 0.21, 0.38), 0.85],
+		["Ad_Red", Color(0.46, 0.19, 0.17), 0.85],
+		["Ad_Cream", Color(0.60, 0.58, 0.53), 0.85],
+		["Ad_Teal", Color(0.22, 0.35, 0.35), 0.85],
+	]:
+		var s := StandardMaterial3D.new()
+		s.albedo_color = entry[1]
+		s.roughness = entry[2]
+		mats[entry[0]] = s
+
+	# The prototype shipped its own road and sidewalk so it could be rendered in
+	# isolation; in the city the real map already provides both, so those
+	# surfaces are dropped rather than laid over the streets.
+	_dress_metro(root_node, mats, ["Asphalt", "Sidewalk"])
+
+
+func _metro_uv_material(file_name: String, cutout: bool) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(METRO_TEX + file_name)
+	m.roughness = 0.7
+	if cutout:
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		m.alpha_scissor_threshold = 0.5
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	return m
+
+
+func _dress_metro(node: Node, mats: Dictionary, drop: Array) -> void:
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		for i in mi.mesh.get_surface_count():
+			var src := mi.mesh.surface_get_material(i)
+			var nm := ""
+			if src != null:
+				nm = src.resource_name
+			if drop.has(nm):
+				# Hide by making it fully transparent: surfaces cannot be
+				# removed from a shared imported mesh without duplicating it.
+				var gone := StandardMaterial3D.new()
+				gone.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				gone.albedo_color = Color(0, 0, 0, 0)
+				mi.set_surface_override_material(i, gone)
+			elif mats.has(nm):
+				mi.set_surface_override_material(i, mats[nm])
+	for c in node.get_children():
+		_dress_metro(c, mats, drop)
 
 
 ## Drops the informal-settlement district onto the map.

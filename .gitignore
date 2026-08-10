@@ -24,3 +24,7 @@ __pycache__/
 
 # Editor/session scratch
 captures/
+
+# Preview renders from render_preview.py / render_all.py. Regenerated on demand
+# (out = HERE / "preview_{name}.png"); same throwaway category as captures/.
+banilad_map/preview_*.png

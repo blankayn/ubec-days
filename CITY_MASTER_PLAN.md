@@ -205,6 +205,11 @@ Fuente, one-way enforcement.
 Sidewalk pedestrian graph derived from the road graph's sidewalk offsets,
 crossing-node behaviour, per-district density, pooling.
 
+**The asset half is done.** `assets/characters/citizen/citizen.glb` +
+`scripts/citizen_npc_prop.gd` give an arbitrary number of visually distinct
+pedestrians from one 1,886-quad model, seeded deterministically. What remains
+is the *system* — the graph, the pool, and navigation. See §7.5.
+
 ### Phase 8 — Optimization
 
 Per-tile navmesh baking, `visibility_range_*` tuning, draw-call budgeting, fog
@@ -718,9 +723,28 @@ Crossings come from `highway=crossing` nodes.
   reposition them ahead of the player on the graph, retire behind.
 - Per-district density (§5): Colon and Carbon extreme, University Belt extreme at
   daytime, Business Park high but tidy, residential low.
-- `scripts/cblock_edward_npc.gd`'s waypoint walker is the existing template, but
-  it lerps linearly with no navmesh and no avoidance. It needs `NavigationAgent3D`
-  and RVO avoidance for crowd densities — this is the navmesh's first consumer.
+- `scripts/citizen_npc_prop.gd` is now the template — not
+  `cblock_edward_npc.gd`. It is the **unit this pool will hold**: body,
+  appearance, Mixamo re-path, toe-bone facing, waypoint walk. One GLB yields
+  unlimited distinct people through
+  `CitizenAppearance.random_from_seed()`. **Seed pedestrians off the road-graph
+  node id**, never `randi()` — the same determinism rule §6 applies to
+  buildings, and the reason is the same: a crowd that reshuffles every run
+  cannot be compared between captures and a bad-looking pedestrian cannot be
+  reproduced. Five seeded citizens already stand and walk on Cuenco
+  (`banilad_city.gd::_spawn_street_npcs`).
+- It still lerps linearly with no navmesh and no avoidance. It needs
+  `NavigationAgent3D` and RVO for crowd densities — this is the navmesh's first
+  consumer.
+- **The pool size is constrained by draw calls, not triangles.** Measured on the
+  Intel HD 5500 by `scripts/tools/citizen_crowd_stress.gd`: ≈22 draw calls per
+  citizen (5–6 surfaces, doubled by shadows), giving 702 calls / 36 fps at 32
+  visible. Sixty all-visible would be ~1,300, which this GPU will not carry. So
+  the pool needs `cast_shadow` off past ~12 m and `visibility_range_end` around
+  45 m **before** it needs more bodies. If that is not enough, the documented
+  fallback is merging each citizen's surfaces into one `ArrayMesh` with the slot
+  colours baked into `ARRAY_COLOR` — a path this repo already has working in
+  `scripts/vertex_albedo.gd`, at the cost of one unique mesh per NPC.
 - The existing `PoliceNpcProp` already has `play_walk()` installed but never
   called; wiring it is the cheapest path to a moving pedestrian.
 

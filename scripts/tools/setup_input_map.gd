@@ -60,6 +60,15 @@ func _build_actions() -> Dictionary:
 		"character_picker": _entry([_key(KEY_C), _pad(JOY_BUTTON_BACK)]),
 		"respawn": _entry([_key(KEY_R)]),
 		"exit_to_menu": _entry([_key(KEY_M)]),
+
+		# --- Emotes -------------------------------------------------------
+		# Numbered so the HUD box can label them 1..N and so adding a fourth
+		# emote is a one-line change here plus one in EMOTE_SCENES. The D-pad
+		# gives the same two on a gamepad. Jump is deliberately NOT here: it
+		# stays on the existing "jump" action (spacebar) and just gained a
+		# clip.
+		"emote_1": _entry([_key(KEY_1), _pad(JOY_BUTTON_DPAD_LEFT)]),
+		"emote_2": _entry([_key(KEY_2), _pad(JOY_BUTTON_DPAD_RIGHT)]),
 	}
 
 

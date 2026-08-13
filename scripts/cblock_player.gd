@@ -12,17 +12,63 @@ const GUSION_SCENE := preload(
 )
 const DUTERTE_SCENE := preload("res://characters/president_duterte__rig.glb")
 const POLICE_SCENE := preload("res://assets/npcs/police.glb")
+const CITIZEN_SCENE := preload("res://assets/characters/citizen/citizen.glb")
 const IDLE_SCENE := preload("res://animation mixamo/Idle.fbx")
 const WALK_SCENE := preload("res://animation mixamo/Walking.fbx")
 const SPRINT_SCENE := preload("res://animation mixamo/Sprint.fbx")
 const PUNCH_LEFT_SCENE := preload("res://animation mixamo/Punchingleft.fbx")
 const PUNCH_RIGHT_SCENE := preload("res://animation mixamo/Punchingright.fbx")
 const HIT_SCENE := preload("res://animation mixamo/Hit To Body.fbx")
+const JUMP_SCENE := preload("res://animation mixamo/Jump.fbx")
+const MOONWALK_SCENE := preload("res://animation mixamo/Moonwalk.fbx")
+const FLAIR_SCENE := preload("res://animation mixamo/Flair.fbx")
+
+## Mixamo exports every clip under this one track name.
+const MIXAMO_CLIP_NAME := "mixamo_com"
+
+## library -> clip -> source FBX. Adding an emote is one line here plus one
+## entry in EMOTES; nothing else needs touching.
+const MIXAMO_CLIPS := {
+	"locomotion": {
+		"idle": IDLE_SCENE,
+		"walk": WALK_SCENE,
+		"sprint": SPRINT_SCENE,
+		"jump": JUMP_SCENE,
+	},
+	"combat": {
+		"punch_left": PUNCH_LEFT_SCENE,
+		"punch_right": PUNCH_RIGHT_SCENE,
+		"hit": HIT_SCENE,
+	},
+	"emote": {
+		"moonwalk": MOONWALK_SCENE,
+		"flair": FLAIR_SCENE,
+	},
+}
+
+## Only these loop. Everything else is a one-shot that hands the body back to
+## locomotion when it finishes.
+const LOOPING_CLIPS := ["idle", "walk", "sprint"]
+## ...and every emote, whatever it is called. An emote is a HELD performance the
+## player switches off, not a clip that runs out. Keyed off the library rather
+## than listing clip names so a third emote loops without anyone remembering to
+## add it here -- which keeps the "one line in MIXAMO_CLIPS plus one in EMOTES"
+## property intact.
+const LOOPING_LIBRARIES := ["emote"]
+
+## Emote slots in HUD order. The index is the number key: 1 -> flair.
+## Kept here rather than in the HUD so the player owns what it can perform and
+## banilad_city.gd only has to render the labels.
+const EMOTES := [
+	{"action": &"emote_1", "clip": "flair", "label": "Flair"},
+	{"action": &"emote_2", "clip": "moonwalk", "label": "Moonwalk"},
+]
 
 const CHARACTER_SCENES := {
 	"gusion": GUSION_SCENE,
 	"duterte": DUTERTE_SCENE,
 	"police": POLICE_SCENE,
+	"citizen": CITIZEN_SCENE,
 }
 
 const EMBEDDED_LOCOMOTION := {
@@ -43,6 +89,12 @@ const SOLE_CLEARANCE := 0.018
 const TARGET_HEIGHT_METERS := 1.78
 const LOCOMOTION_CROSSFADE := 0.18
 const ATTACK_CROSSFADE := 0.08
+## Emotes ease in more than a punch does -- they are a performance, not a hit.
+const EMOTE_CROSSFADE := 0.16
+## Turntable rate while the customizer is open, radians per second.
+const CUSTOMIZE_SPIN_SPEED := 0.55
+## Mesh names that define a rig's height on their own. See _height_reference.
+const HEIGHT_REFERENCE_MESHES := ["CitizenBody"]
 
 # How far in front of the body an Interactable can be picked up. The probe
 # starts at the camera, which orbits well behind the player, so the camera's
@@ -119,11 +171,29 @@ var _visual_bounds := AABB()
 var _has_visual_bounds := false
 var _visual_foot_error := INF
 
-var _attack_time_remaining := 0.0
+var _oneshot_time_remaining := 0.0
+## Index into EMOTES of the emote currently held, or -1 for none.
+##
+## A held emote owns the body with NO timer -- it runs until something in the
+## interrupt list cancels it -- which is why it is tracked separately from
+## _oneshot_time_remaining rather than folded into it. Knowing WHICH emote is up
+## is also what lets the number key toggle: same key stops, other key switches.
+##
+## Invariant: _emote_index >= 0 implies _oneshot_time_remaining == 0.0.
+var _emote_index := -1
 var _punch_left_next := true
 var _character_id := CharacterRoster.DEFAULT_ID
 var _character_label := "Character"
 var _controls_enabled := true
+
+## Customizer framing. The pre_* values restore whatever the camera was doing
+## before the panel opened, so leaving the customizer does not silently retune
+## the player's normal chase camera.
+var _customize_view := false
+var _pre_customize_spring := 0.0
+var _pre_customize_height := 0.0
+var _pre_customize_yaw := 0.0
+var _model_rest_yaw := 0.0
 var _last_prompt := ""
 var _interact_key_label := "E"
 var _camera_enabled := true
@@ -138,6 +208,7 @@ func _ready() -> void:
 	up_direction = Vector3.UP
 	safe_margin = 0.02
 	spring_arm.add_excluded_object(get_rid())
+	_model_rest_yaw = model_root.rotation.y
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_camera_yaw = global_rotation.y
 	_camera_pitch = clampf(spring_arm.rotation.x, minimum_pitch, maximum_pitch)
@@ -167,8 +238,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed(&"jump") and is_on_floor():
 		velocity.y = jump_force
+		# The clip is cosmetic -- physics still does the jumping. Cancel any
+		# emote first so a flair does not swallow the leap.
+		_cancel_emote()
+		_play_oneshot("locomotion/jump", LOCOMOTION_CROSSFADE)
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed(&"interact"):
+		return
+	for index in EMOTES.size():
+		if event.is_action_pressed(EMOTES[index]["action"]):
+			_try_emote(index)
+			get_viewport().set_input_as_handled()
+			return
+	if event.is_action_pressed(&"interact"):
 		_try_interact()
 		get_viewport().set_input_as_handled()
 
@@ -194,8 +275,8 @@ func _input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	_time_since_manual_look += delta
-	if _attack_time_remaining > 0.0:
-		_attack_time_remaining = maxf(_attack_time_remaining - delta, 0.0)
+	if _oneshot_time_remaining > 0.0:
+		_oneshot_time_remaining = maxf(_oneshot_time_remaining - delta, 0.0)
 
 	if not _controls_enabled:
 		velocity.x = move_toward(velocity.x, 0.0, acceleration * delta)
@@ -217,6 +298,17 @@ func _physics_process(delta: float) -> void:
 	var input_vector := Input.get_vector(
 		&"move_left", &"move_right", &"move_forward", &"move_back"
 	)
+	# Walking out of a performance cuts it. Checked against the raw input rather
+	# than velocity, so the emote ends the moment the player asks to move
+	# instead of after the body has already slid.
+	#
+	# Leaving the floor cuts it too, and that clause is load-bearing now: a held
+	# emote has no timer to expire, so a citizen who danced off a kerb would
+	# otherwise flair all the way down.
+	if _emote_index >= 0 and (
+		input_vector.length_squared() > 0.01 or not is_on_floor()
+	):
+		_cancel_emote()
 
 	# Movement comes from the independent orbit yaw, not from a camera transform
 	# that can inherit character rotation.
@@ -349,7 +441,13 @@ func _update_camera_transform() -> void:
 
 
 func _update_animation(sprinting: bool) -> void:
-	if _attack_time_remaining > 0.0:
+	# A held emote owns the body outright. Checked BEFORE the one-shot timer
+	# because a hold has no timer to run down -- this is the guard that stops a
+	# looping emote being crossfaded into idle after exactly one cycle, which is
+	# the whole reason flipping the clip to LOOP_LINEAR alone changed nothing.
+	if _emote_index >= 0:
+		return
+	if _oneshot_time_remaining > 0.0:
 		return
 	var horizontal_speed := Vector2(velocity.x, velocity.z).length()
 	if horizontal_speed < IDLE_THRESHOLD:
@@ -439,7 +537,8 @@ func reset_character(position_value: Vector3) -> void:
 	_camera_yaw = 0.0
 	_camera_pitch = -0.22
 	_time_since_manual_look = 999.0
-	_attack_time_remaining = 0.0
+	_cancel_emote()
+	_oneshot_time_remaining = 0.0
 	_animation_state = ""
 	_set_animation("idle")
 	_update_camera_transform()
@@ -454,6 +553,11 @@ func set_controls_enabled(enabled: bool) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		velocity.x = 0.0
 		velocity.z = 0.0
+		# A UI opening mid-dance has to end it here. The controls-disabled
+		# branch of _physics_process never reads movement input, so the usual
+		# cancel is unreachable from there; that branch does still call
+		# _update_animation, which now blends to idle on its own.
+		_cancel_emote()
 		_set_prompt("")
 
 
@@ -488,6 +592,12 @@ func set_stowed(stowed: bool) -> void:
 	set_physics_process(not stowed)
 	if stowed:
 		velocity = Vector3.ZERO
+		# Cancel AND force idle. set_physics_process(false) above means
+		# _update_animation will never run to blend the dance out, so without
+		# the explicit _set_animation the hidden rig would keep evaluating 53
+		# emote tracks for the whole drive and resume on a stale pose.
+		_cancel_emote()
+		_set_animation("idle")
 		_set_prompt("")
 	else:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -507,7 +617,10 @@ func switch_character(character_id: String) -> void:
 		status_message.emit("%s ALREADY SELECTED" % _character_label)
 		return
 	CharacterRoster.set_selected(character_id)
-	_attack_time_remaining = 0.0
+	# Straight to -1 rather than _cancel_emote(): the rig this emote was playing
+	# on is about to be freed, so there is nothing left to blend back to.
+	_emote_index = -1
+	_oneshot_time_remaining = 0.0
 	_animation_state = ""
 	_skeleton = null
 	_animation_player = null
@@ -563,13 +676,102 @@ func _build_selected_rig() -> void:
 	_track_path_prefix = String(animation_root.get_path_to(_skeleton)) + ":"
 
 	_install_animation_library()
+	# Before _scale_and_align_visual, not after: that function measures the
+	# union AABB of the VISIBLE meshes, so the wardrobe has to be resolved
+	# first or the citizen is grounded against whichever parts happened to
+	# ship enabled.
+	_apply_appearance(rig_root)
 	_scale_and_align_visual(rig_root)
+	# Defensive: switch_character already clears this, but any future caller
+	# that rebuilds the rig directly would otherwise leave a hold pointing at an
+	# AnimationPlayer that no longer exists.
+	_emote_index = -1
 	_animation_state = ""
 	_set_animation("idle")
 	set_meta("idle_animation_loaded", _animation_player.has_animation("locomotion/idle"))
 	set_meta("visual_foot_error", _visual_foot_error)
 	set_meta("player_character", _character_id)
 	status_message.emit("%s READY  //  Idle + Walk + Sprint + Combat" % _character_label)
+
+
+## Applies the saved look to a freshly built rig. A no-op for the three fixed
+## characters, which have no part meshes to switch.
+func _apply_appearance(rig_root: Node3D) -> void:
+	if not CharacterRoster.is_customizable(_character_id):
+		return
+	CharacterRoster.get_appearance().apply(rig_root)
+
+
+## Swaps the citizen's look on the live rig. Re-grounds afterwards because a
+## taller hairstyle or a thicker sole changes the measured height.
+func set_appearance(appearance: CitizenAppearance) -> void:
+	if appearance == null or model_root.get_child_count() == 0:
+		return
+	CharacterRoster.set_appearance(appearance)
+	if not CharacterRoster.is_customizable(_character_id):
+		return
+	var rig_root := model_root.get_child(0) as Node3D
+	if rig_root == null:
+		return
+	# Reset the scale before re-measuring: _scale_and_align_visual multiplies
+	# rig_root.scale in, so measuring an already-scaled rig would compound.
+	rig_root.scale = Vector3.ONE
+	appearance.apply(rig_root)
+	_scale_and_align_visual(rig_root)
+
+
+func get_appearance() -> CitizenAppearance:
+	return CharacterRoster.get_appearance()
+
+
+## The emote roster, for the HUD to label. Only reports clips that actually
+## retargeted onto this character, so the box never offers a key that does
+## nothing.
+func get_emotes() -> Array:
+	var available: Array = []
+	for entry in EMOTES:
+		if _animation_player != null and _animation_player.has_animation(
+			"emote/%s" % entry["clip"]
+		):
+			available.append(entry)
+	return available
+
+
+## Frames the citizen for the customizer: pulls the spring arm in, raises the
+## look-at to chest height, and swings the camera around to the front so the
+## player is looking at the face rather than the back of the head.
+##
+## Safe to drive while controls are off -- _physics_process still calls
+## _update_camera_transform() when _controls_enabled is false.
+func set_customize_view(enabled: bool) -> void:
+	if enabled:
+		if not _customize_view:
+			_pre_customize_spring = spring_arm.spring_length
+			_pre_customize_height = camera_target_height
+			_pre_customize_yaw = _camera_yaw
+		_customize_view = true
+		spring_arm.spring_length = 2.3
+		camera_target_height = 0.98
+		_camera_yaw = rotation.y + PI
+		_camera_pitch = -0.08
+		set_controls_enabled(false)
+	else:
+		if _customize_view:
+			spring_arm.spring_length = _pre_customize_spring
+			camera_target_height = _pre_customize_height
+			_camera_yaw = _pre_customize_yaw
+		_customize_view = false
+		model_root.rotation.y = _model_rest_yaw
+	_update_camera_transform()
+
+
+func _process(delta: float) -> void:
+	# Turntable. Rotating ModelRoot rather than the body means nothing in
+	# _physics_process fights it and the collision capsule stays put.
+	if _customize_view:
+		model_root.rotation.y = wrapf(
+			model_root.rotation.y + CUSTOMIZE_SPIN_SPEED * delta, -PI, PI
+		)
 
 
 func _validate_required_bones() -> bool:
@@ -616,14 +818,44 @@ func _relative_transform(node: Node3D, ancestor: Node3D) -> Transform3D:
 	return result
 
 
+## Meshes that define the rig's height, if it declares any; otherwise every
+## visible mesh, which is what the three fixed characters need.
+func _height_reference(rig_root: Node3D) -> Array:
+	for reference_name in HEIGHT_REFERENCE_MESHES:
+		var found := rig_root.find_child(reference_name, true, false)
+		if found is MeshInstance3D and (found as MeshInstance3D).visible:
+			return [found]
+	var visible_meshes: Array = []
+	for mesh_node in rig_root.find_children("*", "MeshInstance3D", true, false):
+		if (mesh_node as MeshInstance3D).visible:
+			visible_meshes.append(mesh_node)
+	return visible_meshes
+
+
 ## Scales the whole rig to a human-sized height and plants its feet on the
 ## capsule bottom.
 func _scale_and_align_visual(rig_root: Node3D) -> void:
 	var pre_scale_bounds := AABB()
 	var started := false
-	for mesh_node in rig_root.find_children("*", "MeshInstance3D", true, false):
+	# A character's height is its BODY, not its hat. Once head-mounted props
+	# exist, measuring the union of everything visible means putting on a top
+	# hat scales the whole citizen down so the hat fits 1.78 m -- they visibly
+	# shrink when you dress them. Rigs that ship such props name their base
+	# mesh in HEIGHT_REFERENCE_MESHES; anything else keeps the old behaviour of
+	# measuring every visible mesh.
+	var reference := _height_reference(rig_root)
+	for mesh_node in reference:
 		var mesh_instance := mesh_node as MeshInstance3D
 		if mesh_instance.mesh == null:
+			continue
+		# Skip meshes that are switched off. citizen.glb ships every clothing
+		# and hair option as a sibling mesh, so an unfiltered union AABB is the
+		# union of ALL hairstyles and shoes -- which would make every citizen
+		# come out slightly short and mis-grounded depending on which options
+		# happen to exist. The local flag, not is_visible_in_tree(): ModelRoot
+		# is hidden while the player is stowed in a vehicle (set_stowed), and
+		# measuring then would skip everything and warn.
+		if not mesh_instance.visible:
 			continue
 		var relative := _relative_transform(mesh_instance, rig_root)
 		for surface_index in mesh_instance.mesh.get_surface_count():
@@ -682,8 +914,26 @@ func _align_visual_to_capsule() -> void:
 
 func _install_animation_library() -> void:
 	if _try_install_embedded_animations():
+		# An embedded rig brings its own locomotion and combat but no emotes,
+		# so those still come from the shared Mixamo FBXs. Without this,
+		# Gusion would be the one character who cannot dance.
+		_compute_root_motion_scale()
+		_install_library("emote", MIXAMO_CLIPS["emote"])
 		return
 	_install_retargeted_mixamo_animations()
+
+
+## Ratio between this rig's hips height and the source clips', so a retargeted
+## vertical bob keeps its proportions on a taller or shorter character.
+func _compute_root_motion_scale() -> void:
+	var source_hips_rest_y := _mixamo_hips_rest_y(WALK_SCENE)
+	var target_hips_index := _target_bone_index("Hips")
+	var target_hips_rest_y: float = (
+		_skeleton.get_bone_rest(target_hips_index).origin.y
+		if target_hips_index >= 0
+		else source_hips_rest_y
+	)
+	_root_motion_scale = target_hips_rest_y / maxf(absf(source_hips_rest_y), 0.0001)
 
 
 func _try_install_embedded_animations() -> bool:
@@ -716,85 +966,63 @@ func _try_install_embedded_animations() -> bool:
 	return true
 
 
+## Pulls one Mixamo clip out of an imported FBX and hands back a copy.
+##
+## Duplicated before the temporary scene is freed: the Animation is a Resource
+## owned by that scene's AnimationPlayer, and retargeting from a source whose
+## root has already gone is how you get an empty library and a frozen T-pose.
+func _mixamo_clip(scene: PackedScene) -> Animation:
+	var root := scene.instantiate()
+	var player := root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	var clip: Animation = null
+	if player != null and player.has_animation(MIXAMO_CLIP_NAME):
+		clip = player.get_animation(MIXAMO_CLIP_NAME).duplicate() as Animation
+	root.free()
+	return clip
+
+
+## Hips rest height of a source FBX, for the root-motion scale.
+func _mixamo_hips_rest_y(scene: PackedScene) -> float:
+	var root := scene.instantiate()
+	var skeleton := root.find_child("Skeleton3D", true, false) as Skeleton3D
+	var value := 1.0
+	if skeleton != null:
+		var index := skeleton.find_bone("mixamorig1_Hips")
+		if index >= 0:
+			value = skeleton.get_bone_rest(index).origin.y
+	root.free()
+	return value
+
+
 func _install_retargeted_mixamo_animations() -> void:
-	var walk_root := WALK_SCENE.instantiate()
-	var idle_root := IDLE_SCENE.instantiate()
-	var sprint_root := SPRINT_SCENE.instantiate()
-	var punch_left_root := PUNCH_LEFT_SCENE.instantiate()
-	var punch_right_root := PUNCH_RIGHT_SCENE.instantiate()
-	var hit_root := HIT_SCENE.instantiate()
-	var temp_roots: Array = [
-		walk_root, idle_root, sprint_root, punch_left_root, punch_right_root, hit_root
-	]
+	_compute_root_motion_scale()
+	for library_name in MIXAMO_CLIPS:
+		_install_library(library_name, MIXAMO_CLIPS[library_name])
 
-	var walk_skeleton := walk_root.find_child("Skeleton3D", true, false) as Skeleton3D
-	var walk_player := walk_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
-	var idle_player := idle_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
-	var sprint_player := sprint_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
-	var punch_left_player := (
-		punch_left_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
-	)
-	var punch_right_player := (
-		punch_right_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
-	)
-	var hit_player := hit_root.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if not _animation_player.has_animation("locomotion/idle"):
+		push_error("Could not retarget the Mixamo locomotion clips.")
 
-	var walk_source := walk_player.get_animation("mixamo_com") if walk_player else null
-	var idle_source := idle_player.get_animation("mixamo_com") if idle_player else null
-	var sprint_source := sprint_player.get_animation("mixamo_com") if sprint_player else null
-	var punch_left_source := (
-		punch_left_player.get_animation("mixamo_com") if punch_left_player else null
-	)
-	var punch_right_source := (
-		punch_right_player.get_animation("mixamo_com") if punch_right_player else null
-	)
-	var hit_source := hit_player.get_animation("mixamo_com") if hit_player else null
 
-	if walk_skeleton == null or walk_source == null or idle_source == null or sprint_source == null:
-		push_error("Could not find Idle/Walking/Sprint source clips.")
-		for temp_root in temp_roots:
-			temp_root.free()
+## Retargets one table of clip -> FBX into a named AnimationLibrary.
+func _install_library(library_name: String, clips: Dictionary) -> void:
+	var library := AnimationLibrary.new()
+	for clip_name in clips:
+		var source := _mixamo_clip(clips[clip_name])
+		if source == null:
+			push_warning("Missing Mixamo clip '%s' for %s" % [clip_name, library_name])
+			continue
+		var loops: bool = (
+			library_name in LOOPING_LIBRARIES or clip_name in LOOPING_CLIPS
+		)
+		var loop_mode: Animation.LoopMode = (
+			Animation.LOOP_LINEAR if loops else Animation.LOOP_NONE
+		)
+		library.add_animation(clip_name, _retarget_clip(source, loop_mode, true))
+	if library.get_animation_list().is_empty():
 		return
-
-	var source_hips_index := walk_skeleton.find_bone("mixamorig1_Hips")
-	var source_hips_rest_y: float = (
-		walk_skeleton.get_bone_rest(source_hips_index).origin.y
-		if source_hips_index >= 0
-		else 1.0
-	)
-	var target_hips_index := _target_bone_index("Hips")
-	var target_hips_rest_y: float = (
-		_skeleton.get_bone_rest(target_hips_index).origin.y
-		if target_hips_index >= 0
-		else source_hips_rest_y
-	)
-	_root_motion_scale = target_hips_rest_y / maxf(absf(source_hips_rest_y), 0.0001)
-
-	var locomotion := AnimationLibrary.new()
-	locomotion.add_animation("idle", _retarget_clip(idle_source, Animation.LOOP_LINEAR, true))
-	locomotion.add_animation("walk", _retarget_clip(walk_source, Animation.LOOP_LINEAR, true))
-	locomotion.add_animation("sprint", _retarget_clip(sprint_source, Animation.LOOP_LINEAR, true))
-	if _animation_player.has_animation_library("locomotion"):
-		_animation_player.remove_animation_library("locomotion")
-	_animation_player.add_animation_library("locomotion", locomotion)
-
-	var combat := AnimationLibrary.new()
-	if punch_left_source != null:
-		combat.add_animation(
-			"punch_left", _retarget_clip(punch_left_source, Animation.LOOP_NONE, true)
-		)
-	if punch_right_source != null:
-		combat.add_animation(
-			"punch_right", _retarget_clip(punch_right_source, Animation.LOOP_NONE, true)
-		)
-	if hit_source != null:
-		combat.add_animation("hit", _retarget_clip(hit_source, Animation.LOOP_NONE, true))
-	if _animation_player.has_animation_library("combat"):
-		_animation_player.remove_animation_library("combat")
-	_animation_player.add_animation_library("combat", combat)
-
-	for temp_root in temp_roots:
-		temp_root.free()
+	if _animation_player.has_animation_library(library_name):
+		_animation_player.remove_animation_library(library_name)
+	_animation_player.add_animation_library(library_name, library)
 
 
 ## Rebuilds an Animation with every track's bone re-pathed onto the selected
@@ -880,10 +1108,72 @@ func _set_animation(state: String) -> void:
 
 
 func _trigger_attack(clip_name: String) -> void:
-	var full_name := "combat/%s" % clip_name
+	# Mandatory, not tidiness: a held emote makes _update_animation return early
+	# forever, so without this the LOOP_NONE punch would play once and then
+	# freeze on its last frame permanently, with nothing left to hand the body
+	# back to locomotion.
+	_cancel_emote()
+	_play_oneshot("combat/%s" % clip_name)
+
+
+## Plays a clip that owns the body until it finishes, then hands control back
+## to locomotion. Punches, the jump and the emotes are all this same thing --
+## `_update_animation` simply refuses to run while the timer is live.
+func _play_oneshot(full_name: String, crossfade := ATTACK_CROSSFADE) -> bool:
 	if _animation_player == null or not _animation_player.has_animation(full_name):
-		return
+		return false
 	var clip: Animation = _animation_player.get_animation(full_name)
-	_animation_player.play(full_name, ATTACK_CROSSFADE, 1.0)
+	_animation_player.play(full_name, crossfade, 1.0)
 	_animation_state = ""
-	_attack_time_remaining = clip.length + ATTACK_CROSSFADE
+	_oneshot_time_remaining = clip.length + crossfade
+	return true
+
+
+## The looping twin of _play_oneshot: no timer, so the clip runs until
+## _cancel_emote(). _update_animation refuses to run on _emote_index instead.
+##
+## Zeroing the timer matters: starting an emote on the tail of a punch would
+## otherwise leave a countdown live under a clip that has no end, and when it
+## expired locomotion would steal the body back mid-dance.
+func _play_held(full_name: String, crossfade: float) -> bool:
+	if _animation_player == null or not _animation_player.has_animation(full_name):
+		return false
+	_animation_player.play(full_name, crossfade, 1.0)
+	_animation_state = ""
+	_oneshot_time_remaining = 0.0
+	return true
+
+
+## Emotes are HELD performances. The key that starts one ends it, the other key
+## switches to it, and anything the body does for itself -- walking, jumping,
+## throwing a punch, getting into a car -- cancels it. They only START standing
+## still on the ground, but they can always be STOPPED.
+func _try_emote(index: int) -> void:
+	if index < 0 or index >= EMOTES.size():
+		return
+	# Toggle-off is checked before the floor/stow gates on purpose: whatever
+	# state the body has ended up in, the key that began the performance always
+	# ends it.
+	if _emote_index == index:
+		_cancel_emote()
+		return
+	if not is_on_floor() or _stowed:
+		return
+	# Switching is implicit. Calling play() on the other emote mid-loop blends
+	# from the live pose over EMOTE_CROSSFADE, so a switch is a crossfade rather
+	# than a cut -- the same bar the wrap itself has to meet.
+	if _play_held("emote/%s" % EMOTES[index]["clip"], EMOTE_CROSSFADE):
+		_emote_index = index
+		status_message.emit(String(EMOTES[index]["label"]).to_upper())
+
+
+func _cancel_emote() -> void:
+	if _emote_index < 0:
+		return
+	_emote_index = -1
+	_oneshot_time_remaining = 0.0
+	# Deliberately no stop()/play(): clearing the state is what makes the next
+	# _update_animation crossfade into idle/walk rather than cut to it. No
+	# status_message either -- this is reached from eight paths and would spam
+	# the HUD every time the player stepped out of a dance.
+	_animation_state = ""

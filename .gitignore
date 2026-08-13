@@ -28,3 +28,20 @@ captures/
 # Preview renders from render_preview.py / render_all.py. Regenerated on demand
 # (out = HERE / "preview_{name}.png"); same throwaway category as captures/.
 banilad_map/preview_*.png
+
+# Character textures Godot extracts from the "with skin" Mixamo FBXs (Flair,
+# Moonwalk). The game only ever reads the AnimationPlayer clip out of those
+# files -- the bundled character mesh and its 4K textures are never drawn -- and
+# the importer regenerates these on demand, so tracking them costs ~63 MB for
+# nothing. The FBXs themselves ARE tracked; re-exporting them from Mixamo with
+# "Skin: Without Skin" would drop those to ~350 KB each and make this rule moot.
+animation mixamo/Flair_*.png
+animation mixamo/Flair_*.png.import
+animation mixamo/Moonwalk_*.png
+animation mixamo/Moonwalk_*.png.import
+
+# Geometry harvested from Creative Characters FREE (Superhive). The licence
+# permits commercial use but NOT redistribution, and this repo is public, so the
+# derived file stays local. tools/harvest_accessories.py regenerates it from your
+# own copy of the pack; without it the citizen simply builds with no accessories.
+tools/citizen_accessories.json

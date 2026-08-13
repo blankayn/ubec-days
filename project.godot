@@ -148,6 +148,18 @@ exit_to_menu={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":16,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":77,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
 ]
 }
+emote_1={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":16,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":49,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventJoypadButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"button_index":13,"pressure":0.0,"pressed":false,"script":null)
+]
+}
+emote_2={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":16,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":50,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+, Object(InputEventJoypadButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"button_index":14,"pressure":0.0,"pressed":false,"script":null)
+]
+}
 
 [physics]
 
@@ -161,8 +173,5 @@ lights_and_shadows/directional_shadow/size=2048
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=0
 textures/default_filters/anisotropic_filtering_level=0
 scaling_3d/scale=0.75
-# Anti-aliasing was off entirely, which at scaling_3d 0.75 meant every roofline
-# and kerb crawled. 4x MSAA is the one setting that buys the most per frame in
-# a city made almost entirely of long straight edges.
-anti_aliasing/quality/msaa_3d=2
 environment/defaults/default_clear_color=Color(0.012, 0.016, 0.025, 1)
+#Anti-aliasingwasoffentirely,whichatscaling_3d0.75meanteveryroofline#andkerbcrawled.4xMSAAistheonesettingthatbuysthemostperframein#acitymadealmostentirelyoflongstraightedges.anti_aliasing/quality/msaa_3d=2

@@ -512,9 +512,29 @@ keep list and is untouched.
 ### Milestone 5 — City life
 - **5a.** Re-bake the navmesh to cover IT Park (see §4 open issues).
   `AGENT_MAX_CLIMB = 0.35` already clears the 0.15 m kerbs.
-- **5b.** Pedestrians/traffic. Best template is `cblock_edward_npc.gd`
-  (waypoint patrol, rest-pose-corrected Mixamo retarget, auto-scale, foot
-  grounding). Spawn around the player, not across 2.5 km.
+- **5b.** Pedestrians/traffic. **The pedestrian body now exists** — see the
+  citizen in §6. `scripts/citizen_npc_prop.gd` supersedes `cblock_edward_npc.gd`
+  as the template: same waypoint patrol and Mixamo re-path, but one GLB yields
+  unlimited visually distinct people via `CitizenAppearance.random_from_seed()`.
+  Five seeded citizens already stand and walk on Cuenco
+  (`banilad_city.gd::_spawn_street_npcs`, entry 6).
+  What is still missing is the *system*: the pedestrian graph derived from
+  road-graph sidewalk offsets, the never-allocating pool, and
+  `NavigationAgent3D`/RVO (CITY_MASTER_PLAN.md §7.5).
+  **Measured before designing it** — `scripts/tools/citizen_crowd_stress.gd`
+  on the Intel HD 5500, all on screen at close range with shadows on:
+
+  | citizens | draw calls | frame |
+  |---|---|---|
+  | 8 | 211 | 22.5 ms (44 fps) |
+  | 16 | 391 | 21.7 ms (46 fps) |
+  | 24 | 519 | 24.7 ms (40 fps) |
+  | 32 | 702 | 27.5 ms (36 fps) |
+
+  ≈22 draw calls per citizen. A §7.5 pool of 60 all visible would be ~1,300,
+  which this GPU will not carry — so the pool needs `cast_shadow` off past
+  ~12 m and `visibility_range_end` before it needs more people. Spawn around
+  the player, not across 2.5 km.
 - **5c.** Move the character picker (hardcoded in `cblock_map.gd:88-163`) to
   Banilad — `banilad_city.gd:50-60` only handles `M` and `R`.
 
@@ -590,6 +610,91 @@ framework + `dialogue_choice_ui.gd`. Melee animates in
 
 ## 6. Assets worth knowing about
 
+- **The citizen** (`assets/characters/citizen/citizen.glb`, ~590 KB) — the
+  customizable humanoid, built by `tools/build_citizen.py` from
+  `tools/citizen_spec.py`:
+
+  ```bash
+  "C:/Program Files/Blender Foundation/Blender 4.2/blender.exe" -b -noaudio -P tools/build_citizen.py
+  ```
+
+  1,886 quads / 3,772 tris visible; 3,257 quads across every wardrobe option in
+  the file. One watertight, smooth-shaded, continuous-topology body plus 14
+  sibling meshes (hair ×3, tops ×3, bottoms ×2, shoes ×2, 2 accents, and the
+  eyes/brows), all skinned to the same Mixamo armature, non-worn ones hidden at
+  runtime. No UVs and no textures: every region is a tinted material slot, and
+  the whole city needs at most 8 swatches × 7 slots = 56 materials however large
+  the crowd gets.
+
+  Traps this build already pays for, all of them silent if reintroduced:
+  - **The Mixamo scale trap.** `import_rig()` is copied verbatim from
+    `tools/build_police.py`, fcurve rescale included. See §5's 500×-too-big
+    officer.
+  - **Frame seeding.** Limb chains are seeded on the limb's OWN axis, not on
+    the socket centroid. Seed it at the socket and the first tangent points up
+    the torso, the transported frame collapses, and the shoulders bowtie.
+  - **Sharpness lives in mesh data**, never an EdgeSplit modifier: the export
+    runs `export_apply=False`, which does not evaluate modifiers, so a
+    modifier's creases never reach the GLB.
+  - **≤4 bone influences.** glTF drops the 5th silently and the mesh then
+    creeps toward the origin under animation. Gated in Blender *and*
+    re-checked on the exported file by the smoke test.
+  - **A sorted loop and a generated ring agree on winding but not on PHASE.**
+    `order_loop()` sorts a carved socket by angle, but `ring()` always starts
+    at angle 0, so the two meet rotationally offset by however far the
+    lowest-angle vertex happens to sit from zero. At the shoulder that was
+    −143°, about three vertices of eight: cross-edges of 9–14 cm where 3 cm was
+    right, all 8 bridge quads bowtied, and **a torn hole at the shoulder of
+    every top**. `best_shift()` now picks the rotation by scoring the bridge
+    that would actually be produced — bowties first, then cross-edge length.
+    Two cheaper proxies were tried and both are wrong somewhere:
+    nearest-angle-to-zero fixes the arm and breaks the leg (whose seat loop is
+    seven torso vertices plus an invented medial one, so no vertex sits at a
+    meaningful angle), and nearest-distance breaks it too, because the shortest
+    pairing of an irregular loop is not always the untwisted one.
+    `validate_faces()` guards it: garments are not closed manifolds so they
+    cannot go through `validate_topology`, and this was invisible to every
+    other gate for the whole of phases 4–7.
+  - **Garments get `recalc_face_normals`.** `stack()` winds inward; the body
+    only looks right because the operator flips it. A shell exported verbatim
+    backface-culls to nothing.
+  - **Hidden meshes pollute grounding.** `cblock_player.gd::_scale_and_align_visual`
+    unions the AABB of every `MeshInstance3D`, so it now skips invisible ones
+    and the appearance is applied *before* it runs.
+  - **One Blender material per SLOT, shared by every mesh.**
+    `bpy.data.materials.new("Citizen_top")` does not fail on a duplicate name —
+    it silently returns `Citizen_top.001`, `.002`, `.003`, and those names ride
+    into the GLB. The runtime resolves a slot by stripping the `Citizen_`
+    prefix, so a suffixed material resolved to `top.003`, matched no slot, and
+    was skipped. **Only whichever garment won the unsuffixed name was ever
+    tintable** — every tee and polo rendered its authored default and ignored
+    the colour swatches entirely, through phases 4–8 and every capture in them.
+    `make_material()` now caches per slot. `citizen_playable_smoke_test.gd`
+    asserts every surface resolves to a slot in the manifest, which is the
+    check that was missing: the meshes were present, visible and correctly
+    weighted, so nothing else noticed.
+  - **Never tint through `mesh.surface_get_material()`** — GLB materials are
+    shared by every instance, so that recolours the whole crowd and the player.
+    `CitizenAppearance` goes through `set_surface_override_material()` only.
+
+  **The harvested accessories are NOT in this repo.** `tools/harvest_accessories.py`
+  and the `ACCESSORY_IMPORT` table in `citizen_spec.py` still describe how to lift
+  rigid head props (hats, glasses, moustaches, two hairstyles) out of Creative
+  Characters FREE, but the derived geometry it produces —
+  `tools/citizen_accessories.json` — is deliberately **not tracked**: this repo is
+  public and Superhive's licence permits commercial use but not redistribution.
+  Run the harvest locally against your own copy of the pack and rebuild to get
+  them back; without the JSON the build logs `building without harvested
+  accessories` and the manifest simply omits those groups, so the creator UI and
+  the NPC randomiser lose the rows cleanly rather than offering dead options.
+
+  Consumed by: `scripts/citizen_appearance.gd` (looks, saved into
+  `user://cblock_character.cfg`), the `citizen` roster entry, the in-game
+  creator on `C → Customize` (`banilad_city.gd::_build_citizen_customizer`),
+  and `scripts/citizen_npc_prop.gd` for pedestrians. Part names are never typed
+  twice — `citizen_manifest.json` is generated from `citizen_spec.py` and the
+  smoke test asserts it resolves against the GLB in both directions.
+
 - **Slum districts** (`assets/buildings/banilad_slum.glb`, 5.85 MB, 417 houses
   across 5 sitios, 60 k faces) — built by `tools/build_slum.py`. Banilad,
   Talamban, Kamagayan, Mabolo and Lorega, all 218–391 m from the player spawn.
@@ -632,6 +737,15 @@ All run as `--headless --path . --script res://<path>`:
 .tools/godot/Godot_v4.7-stable_win64.exe --headless --path . --script res://scripts/tools/third_person_smoke_test.gd
 ```
 
+- `scripts/tools/citizen_playable_smoke_test.gd` — the citizen is in the roster,
+  switches in, stands 1.4–2.2 m, plays all six clips, and then the wardrobe
+  checks: the manifest resolves against the GLB **in both directions**, weights
+  are re-validated on the *exported* file (4 influences summing to 1.0),
+  appearance round-trips through `ConfigFile`, switching a part changes
+  visibility and drags its accent along, and — the one that catches the worst
+  bug — two citizens with different looks do **not** mutate the shared mesh
+  material. Also asserts height moves <1 cm between outfits, which is the guard
+  on hidden meshes polluting the grounding AABB.
 - `scripts/tools/input_map_smoke_test.gd` — every action exists and a realistic
   device event still matches it (guards the device-tag trap in §5, 1a).
 - `scripts/tools/vehicle_smoke_test.gd` — both vehicle kinds settle upright on
@@ -695,3 +809,104 @@ All run as `--headless --path . --script res://<path>`:
   keyed door, chapter framework) must still work, and the three named NPCs must
   stay in the world at night. Uses the `_failures` + `quit(1)` pattern, so it
   reports instead of hanging. **Runs green.**
+
+### Emotes
+
+`1` Flair, `2` Moonwalk (D-pad left/right on a gamepad), shown in a keycap box
+bottom-left built from `player.get_emotes()` — so a character whose rig could
+not take a clip never gets offered the key. Jump stayed on **spacebar** and
+simply gained a clip.
+
+- **`MIXAMO_CLIPS` in `cblock_player.gd` is the whole table.** Adding an emote is
+  one line there plus one in `EMOTES`, plus an action in
+  `scripts/tools/setup_input_map.gd` (re-run it; never hand-edit `project.godot`).
+- **Emotes LOOP and are HELD; punches and the jump are timed one-shots.** Two
+  different mechanisms, deliberately:
+  - `_play_oneshot()` seeds `_oneshot_time_remaining = clip.length + crossfade`,
+    a wall-clock countdown with **no connection to the AnimationPlayer**. Used by
+    punches and the jump.
+  - `_play_held()` sets no timer at all. `_update_animation` returns early on
+    `_emote_index >= 0`, **checked before the timer**. That guard is the whole
+    feature: flipping the clips to `LOOP_LINEAR` alone changed nothing visible,
+    because the countdown still tore the dance out after exactly one cycle.
+  - Loop mode comes from `LOOPING_LIBRARIES = ["emote"]`, keyed off the library
+    rather than a clip-name list, so a third emote loops without anyone
+    remembering to add it.
+- **The number key toggles.** `1` starts Flair, `1` again stops it, `2` switches
+  (a crossfade from the live pose, not a cut). Toggle-off is checked *before* the
+  `is_on_floor()` gate — whatever state the body reached, the key that started the
+  performance ends it.
+- **A held emote has no timer, so everything that could strand it must cancel it.**
+  `_trigger_attack` is the critical one: without its `_cancel_emote()` the hold
+  guard returns early forever and the `LOOP_NONE` punch **freezes on its last
+  frame permanently**. Also cancelled by movement, leaving the floor (new — the
+  timer used to self-heal a mid-air emote), the jump, `set_controls_enabled(false)`
+  (a UI opening mid-dance; the disabled `_physics_process` branch never reads
+  input, so the usual cancel is unreachable there), `set_stowed(true)` (which also
+  forces idle — physics is off, so nothing can blend out on its own),
+  `reset_character`, `switch_character` and `_build_selected_rig`.
+- **The wrap was measured, not assumed.** `scripts/tools/emote_loop_seam_check.gd`
+  samples Godot's own interpolator at 120 Hz and reports
+  `wrap step / p99(ordinary step)`, with `locomotion/walk` as the control — it
+  already loops cleanly *and* carries the same `animation/trimming=true` and
+  `fps=30` import settings. Baseline: **flair 1.00, moonwalk 1.12, walk 1.00** —
+  both seamless, so **no seam fix was needed**. Finger joints are excluded from the
+  verdict: the citizen's hands are mittens, so those bones drive geometry that
+  barely exists, and including them reported a false 2.12 on moonwalk. Hips
+  position end-to-end is exactly 0,0,0, confirming `_retarget_clip`'s horizontal
+  freeze.
+- **`Flair.fbx` and `Moonwalk.fbx` are 34 MB each** — they were downloaded from
+  Mixamo *with skin*, so each carries a full character mesh the game never uses.
+  The animation-only exports are ~350 KB, like every other clip in that folder.
+  Re-downloading with "Skin: Without Skin" would save ~68 MB in the repo; the
+  clips work either way.
+- **Synthesised input does not reach the Player's `_unhandled_input` under a
+  `--script` SceneTree run** (the map's own does receive it). So emote coverage
+  in `citizen_playable_smoke_test.gd` asserts the clips exist and that
+  `_play_oneshot` takes the body; the key binding itself is covered by
+  `input_map_smoke_test.gd`, and delivery is the same path the existing jump and
+  attack already use.
+- `citizen_emote_capture.gd` **works now that emotes hold.** It previously could
+  not photograph one: the clips are ~1.1 s and a frame of the streaming city can
+  exceed that, so a *timed* emote started and finished between two `_process`
+  calls. A hold does not expire, so there is no race. Its last two shots use
+  `seek()` to straddle the loop point (0.97 × length, then just after the wrap) —
+  the visual counterpart to the seam number. Note it drives
+  `_play_oneshot("locomotion/jump")` directly, which bypasses the jump branch's
+  `_cancel_emote()`, so it must cancel first or the jump freezes.
+
+### Capture tools (these RENDER — never pass `--headless`, it writes black PNGs)
+
+```bash
+.tools/godot/Godot_v4.7-stable_win64.exe --path . --script res://scripts/tools/citizen_capture.gd -- --shots body
+```
+
+- `scripts/tools/citizen_capture.gd` — `--shots body` (turnaround + face, hand,
+  shoulder, foot close-ups, in clay grey with the skeleton forced to its rest
+  pose), `posed` (elbow/knee/shoulder/hip bent — **the only picture that can
+  show a skin-weighting bug**), `parts` (three complete outfits), `crowd` (six
+  seeded citizens). Loads the GLB by absolute path through `GLTFDocument`, the
+  way `metro_capture.gd` loads its building, so the Blender→look→fix loop never
+  goes through Godot's importer.
+- **Customizer layout rule:** the panel is pinned top AND bottom, its rows live
+  in a `ScrollContainer`, and Randomize / Save / Cancel sit *outside* that
+  scroll. Adding a part group is now a one-line change in `citizen_spec.py`, and
+  the four accessory groups took the content past 1000 px on a centred panel --
+  which pushed Save and Cancel off the bottom and the title off the top, leaving
+  a creator with no visible way to commit or back out. Esc still worked, but
+  nothing on screen said so. `citizen_creator_capture.gd` now asserts the Esc
+  route explicitly.
+- `scripts/tools/citizen_creator_capture.gd` — opens the real `banilad_city.tscn`,
+  drives the C-key picker into `Customize`, cycles parts through the same
+  functions the buttons call, and photographs the panel with the live player
+  beside it. This is the check the isolated capture cannot make: that the
+  creator is reachable through the game's own UI.
+- `scripts/tools/citizen_crowd_stress.gd` — draw calls and frame time at
+  N = 8/16/24/32 seeded citizens. Numbers in §5, Milestone 5b.
+
+A note on the capture rig itself, learned the expensive way: it originally ran
+ambient 1.1 + key 1.7 + exposure 1.0 and clipped the whole figure to flat white,
+which hid a pair of spikes on both shoulders for an entire iteration. It also
+stretched a directional shadow map over a 200 m far plane, and the resulting
+acne on a white t-shirt read convincingly as the garment interpenetrating the
+body. **If a capture looks wrong, suspect the capture before the model.**

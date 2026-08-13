@@ -14,6 +14,7 @@ const MuletNpcPropScript := preload("res://scripts/mulet_npc_prop.gd")
 const JholoNpcPropScript := preload("res://scripts/jholo_npc_prop.gd")
 const EdwardNpcPropScript := preload("res://scripts/edward_npc_prop.gd")
 const PoliceNpcPropScript := preload("res://scripts/police_npc_prop.gd")
+const CitizenNpcPropScript := preload("res://scripts/citizen_npc_prop.gd")
 const CBlockEdwardScene := preload("res://assets/npcs/cblock_edward_npc.tscn")
 const DrivableVehicleScript := preload("res://scripts/vehicle_body.gd")
 const CountryMallAsset := preload("res://assets/buildings/gaisano_country_mall.glb")
@@ -137,6 +138,20 @@ var _travel_open := false
 var _travel_overlay: ColorRect
 var _character_buttons: Dictionary = {}
 var _selected_preview_id := ""
+
+# Citizen customizer. Not a full-rect overlay like the picker: the preview IS
+# the player standing in the world, so the panel is a right-hand strip and the
+# left two thirds of the screen stay unobstructed.
+var _customizer_open := false
+var _customizer_root: Control
+var _customize_button: Button
+var _draft_appearance: CitizenAppearance
+var _appearance_on_open: CitizenAppearance
+var _part_labels: Dictionary = {}
+var _swatch_rows: Dictionary = {}
+
+# Emote box: a row of numbered keycaps in the bottom-left corner.
+var _emote_bar: Control
 var _vehicles: Array = []
 var _active_vehicle = null
 
@@ -156,6 +171,8 @@ func _ready() -> void:
 		player.prompt_changed.connect(_set_interact_prompt)
 	_build_dialogue_ui()
 	_build_character_picker()
+	_build_citizen_customizer()
+	_build_emote_bar()
 	_build_travel_menu()
 	_build_pause_menu()
 	_refresh_help_text()
@@ -602,6 +619,39 @@ func _spawn_street_npcs() -> void:
 	police.build()
 	police.name = "BaniladPolice"
 
+	# 6) Citizens. Fixed seeds, not randi(): a street that reshuffles every run
+	# cannot be compared between captures, and a pedestrian that looks wrong
+	# cannot be reproduced. CITY_MASTER_PLAN.md §7.5's pooled crowd will derive
+	# its seeds from the road-graph node id for the same reason.
+	const CITIZEN_SPAWNS := [
+		{"seed": 8121, "x": EAST_WALK, "z": -566.0, "height": 1.71, "walk": false},
+		{"seed": 3390, "x": WEST_WALK + 0.5, "z": -572.0, "height": 1.78, "walk": false},
+		{"seed": 5074, "x": EAST_WALK - 0.5, "z": -536.0, "height": 1.66, "walk": true},
+		{"seed": 9218, "x": WEST_WALK, "z": -544.0, "height": 1.80, "walk": true},
+		{"seed": 1447, "x": EAST_WALK + 0.4, "z": -512.0, "height": 1.74, "walk": false},
+	]
+	for index in CITIZEN_SPAWNS.size():
+		var spawn: Dictionary = CITIZEN_SPAWNS[index]
+		var spot := _grounded_feet_position(
+			Vector3(float(spawn["x"]), 0.0, float(spawn["z"]))
+		)
+		var citizen = CitizenNpcPropScript.new()
+		citizen.build_on_ready = false
+		citizen.appearance_seed = int(spawn["seed"])
+		citizen.target_height = float(spawn["height"])
+		citizen.position = spot
+		if bool(spawn["walk"]):
+			var along := 26.0 if index % 2 == 0 else -26.0
+			citizen.waypoints = PackedVector3Array([
+				spot,
+				_grounded_feet_position(
+					Vector3(float(spawn["x"]), 0.0, float(spawn["z"]) + along)
+				),
+			])
+		add_child(citizen)
+		citizen.build()
+		citizen.name = "BaniladCitizen%d" % index
+
 
 ## Prop NPCs put their soles at the node origin — plant that on the mesh.
 func _grounded_feet_position(xz: Vector3) -> Vector3:
@@ -664,6 +714,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _active_vehicle != null:
 		if event.is_action_pressed(&"interact"):
 			_exit_vehicle()
+			get_viewport().set_input_as_handled()
+		return
+	# The customizer owns C and Esc while it is up, so neither stacks the
+	# picker back on top of it nor drops the pause menu over it.
+	if _customizer_open:
+		if event.is_action_pressed(&"pause") or event.is_action_pressed(&"character_picker"):
+			_cancel_appearance()
 			get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed(&"character_picker"):
@@ -749,7 +806,7 @@ func _load_landmarks() -> void:
 
 
 func _update_nearest_landmark() -> void:
-	if _picker_open or _travel_open:
+	if _picker_open or _travel_open or _customizer_open:
 		return
 	var origin := player.global_position
 	var best_name := ""
@@ -996,6 +1053,10 @@ func _build_character_picker() -> void:
 	confirm.pressed.connect(_confirm_character_pick)
 	actions.add_child(confirm)
 
+	_customize_button = _make_picker_button("Customize", Vector2(150, 46))
+	_customize_button.pressed.connect(_open_citizen_customizer)
+	actions.add_child(_customize_button)
+
 	var close_btn := _make_picker_button("Close  (C / Esc)", Vector2(180, 46))
 	close_btn.pressed.connect(_close_character_picker)
 	actions.add_child(close_btn)
@@ -1095,6 +1156,8 @@ func _refresh_character_card_states() -> void:
 	for character_id in _character_buttons.keys():
 		var button: Button = _character_buttons[character_id]
 		button.set_pressed_no_signal(character_id == _selected_preview_id)
+	if _customize_button != null:
+		_customize_button.disabled = not CharacterRoster.is_customizable(_selected_preview_id)
 
 
 func _confirm_character_pick() -> void:
@@ -1102,4 +1165,363 @@ func _confirm_character_pick() -> void:
 		_selected_preview_id = CharacterRoster.DEFAULT_ID
 	if player.has_method("switch_character"):
 		player.switch_character(_selected_preview_id)
+	# Availability is per character, so the box has to be rebuilt on a swap.
+	_refresh_emote_bar()
 	_close_character_picker()
+
+
+## ---------------------------------------------------------------------
+## Emote box
+##
+## A row of numbered keycaps in the bottom-left corner, built from whatever
+## `player.get_emotes()` reports rather than from a hardcoded list -- so a
+## character whose rig could not take a clip never gets offered the key, and
+## adding a fourth emote in cblock_player.gd surfaces here for free.
+##
+## Jump is deliberately absent: it is on spacebar with the rest of the
+## movement keys, and the help banner already lists it.
+## ---------------------------------------------------------------------
+
+func _build_emote_bar() -> void:
+	_emote_bar = HBoxContainer.new()
+	_emote_bar.name = "EmoteBar"
+	_emote_bar.anchor_top = 1.0
+	_emote_bar.anchor_bottom = 1.0
+	_emote_bar.offset_left = 24.0
+	_emote_bar.offset_top = -76.0
+	_emote_bar.offset_bottom = -24.0
+	_emote_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_emote_bar.add_theme_constant_override("separation", 10)
+	_emote_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(_emote_bar)
+	_refresh_emote_bar()
+
+
+func _refresh_emote_bar() -> void:
+	if _emote_bar == null:
+		return
+	for child in _emote_bar.get_children():
+		_emote_bar.remove_child(child)
+		child.queue_free()
+	if not player.has_method("get_emotes"):
+		return
+	var emotes: Array = player.get_emotes()
+	for index in emotes.size():
+		_emote_bar.add_child(_make_emote_cell(index + 1, String(emotes[index]["label"])))
+	_emote_bar.visible = not emotes.is_empty()
+
+
+func _make_emote_cell(number: int, label_text: String) -> PanelContainer:
+	var cell := PanelContainer.new()
+	# Same recipe as the picker's buttons so the HUD reads as one interface.
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.07, 0.11, 0.16, 0.86)
+	style.border_color = Color(0.35, 0.55, 0.7, 0.9)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	style.content_margin_left = 12
+	style.content_margin_right = 14
+	style.content_margin_top = 8
+	style.content_margin_bottom = 8
+	cell.add_theme_stylebox_override("panel", style)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 9)
+	cell.add_child(row)
+
+	var key := Label.new()
+	key.text = str(number)
+	key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	key.custom_minimum_size = Vector2(22, 0)
+	key.add_theme_font_size_override("font_size", 17)
+	key.add_theme_color_override("font_color", Color(0.45, 0.86, 1.0, 1.0))
+	key.add_theme_color_override("font_outline_color", Color(0.01, 0.02, 0.03, 1.0))
+	key.add_theme_constant_override("outline_size", 4)
+	row.add_child(key)
+
+	var name_label := Label.new()
+	name_label.text = label_text
+	name_label.add_theme_font_size_override("font_size", 16)
+	name_label.add_theme_color_override("font_color", Color(0.94, 0.97, 1.0, 1.0))
+	name_label.add_theme_color_override("font_outline_color", Color(0.01, 0.02, 0.03, 1.0))
+	name_label.add_theme_constant_override("outline_size", 4)
+	row.add_child(name_label)
+	return cell
+
+
+## ---------------------------------------------------------------------
+## Citizen customizer
+##
+## The preview is the player themselves, standing in the world under the
+## map's own sun and tonemap. A SubViewport turntable was the alternative and
+## was rejected: it is a second full 3D pass every frame, with its own World3D,
+## camera and sun (SubViewports do not inherit the WorldEnvironment, so the
+## preview would also misrepresent the lighting) -- the most expensive possible
+## way to show a character who is already on screen, on gl_compatibility at
+## scaling_3d 0.75. Applying live costs nothing but a few property writes.
+## ---------------------------------------------------------------------
+
+func _build_citizen_customizer() -> void:
+	_customizer_root = Control.new()
+	_customizer_root.name = "CitizenCustomizer"
+	_customizer_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# PASS, not STOP: the world behind stays visible AND the panel is the only
+	# thing that swallows clicks.
+	_customizer_root.mouse_filter = Control.MOUSE_FILTER_PASS
+	_customizer_root.visible = false
+	hud.add_child(_customizer_root)
+
+	var panel := PanelContainer.new()
+	# Explicit anchors, not PRESET_RIGHT_WIDE: that preset pins left and right
+	# both to 1.0, so the container has zero width and a 420 px panel inside it
+	# overflows off the right edge of the screen -- which is exactly how the
+	# first version of this panel rendered as nothing at all.
+	panel.anchor_left = 1.0
+	panel.anchor_right = 1.0
+	# Pinned top AND bottom, not centred. Centring lets the panel grow off both
+	# edges of the screen as groups are added, and adding groups is now cheap --
+	# the four accessory groups took the content past 1000 px and pushed Save and
+	# Cancel clean off the bottom, leaving no way to commit or back out.
+	panel.anchor_top = 0.0
+	panel.anchor_bottom = 1.0
+	panel.offset_left = -444.0
+	panel.offset_right = -24.0
+	panel.offset_top = 20.0
+	panel.offset_bottom = -20.0
+	panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Same recipe as the picker's panel, so the two read as one interface.
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.07, 0.11, 0.16, 0.96)
+	style.border_color = Color(0.45, 0.78, 0.92, 0.9)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(10)
+	style.content_margin_left = 22
+	style.content_margin_right = 22
+	style.content_margin_top = 20
+	style.content_margin_bottom = 20
+	panel.add_theme_stylebox_override("panel", style)
+	_customizer_root.add_child(panel)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 10)
+	panel.add_child(column)
+
+	var title := Label.new()
+	title.text = "SELECT LOOK"
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", Color(0.94, 0.97, 1.0, 1.0))
+	title.add_theme_color_override("font_outline_color", Color(0.01, 0.02, 0.03, 1.0))
+	title.add_theme_constant_override("outline_size", 6)
+	column.add_child(title)
+
+	var subtitle := Label.new()
+	subtitle.text = "Changes apply to your citizen as you pick"
+	subtitle.add_theme_font_size_override("font_size", 14)
+	subtitle.add_theme_color_override("font_color", Color(0.65, 0.76, 0.84, 1.0))
+	column.add_child(subtitle)
+
+	# The rows scroll; the buttons below do not. Whatever the wardrobe grows to,
+	# Save and Cancel stay on screen.
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
+	column.add_child(scroll)
+
+	var rows := VBoxContainer.new()
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 8)
+	scroll.add_child(rows)
+
+	# Part groups and their palettes come from the manifest, so adding a
+	# hairstyle in citizen_spec.py surfaces here with no GDScript change.
+	var manifest := CitizenAppearance.manifest()
+	for group in manifest.get("groups", {}):
+		_build_part_row(rows, String(group))
+	for slot in ["skin", "eyes"]:
+		_build_colour_row(rows, slot)
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 10)
+	column.add_child(actions)
+	var randomize_btn := _make_picker_button("Randomize", Vector2(112, 40))
+	randomize_btn.pressed.connect(_randomize_appearance)
+	actions.add_child(randomize_btn)
+	var save_btn := _make_picker_button("Save", Vector2(92, 40))
+	save_btn.pressed.connect(_save_appearance)
+	actions.add_child(save_btn)
+	var cancel_btn := _make_picker_button("Cancel  (Esc)", Vector2(126, 40))
+	cancel_btn.pressed.connect(_cancel_appearance)
+	actions.add_child(cancel_btn)
+
+
+func _build_part_row(column: VBoxContainer, group: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	column.add_child(row)
+
+	var name_label := Label.new()
+	name_label.text = group.capitalize()
+	name_label.custom_minimum_size = Vector2(74, 0)
+	name_label.add_theme_font_size_override("font_size", 15)
+	name_label.add_theme_color_override("font_color", Color(0.72, 0.83, 0.9, 1.0))
+	row.add_child(name_label)
+
+	var prev := _make_picker_button("<", Vector2(34, 30))
+	prev.pressed.connect(_cycle_part.bind(group, -1))
+	row.add_child(prev)
+
+	var value := Label.new()
+	value.custom_minimum_size = Vector2(150, 0)
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	value.add_theme_font_size_override("font_size", 15)
+	value.add_theme_color_override("font_color", Color(0.94, 0.97, 1.0, 1.0))
+	row.add_child(value)
+	_part_labels[group] = value
+
+	var next := _make_picker_button(">", Vector2(34, 30))
+	next.pressed.connect(_cycle_part.bind(group, 1))
+	row.add_child(next)
+
+	var slot := _slot_for_group(group)
+	if not slot.is_empty():
+		_build_swatches(column, slot)
+
+
+func _build_colour_row(column: VBoxContainer, slot: String) -> void:
+	var label := Label.new()
+	label.text = slot.capitalize()
+	label.add_theme_font_size_override("font_size", 15)
+	label.add_theme_color_override("font_color", Color(0.72, 0.83, 0.9, 1.0))
+	column.add_child(label)
+	_build_swatches(column, slot)
+
+
+## The slot a group's swatches tint. Read from the manifest's part_slot table
+## rather than assuming group name == slot name, because they only coincide by
+## convention and `accent` belongs to no group at all.
+func _slot_for_group(group: String) -> String:
+	var manifest := CitizenAppearance.manifest()
+	var part_slot: Dictionary = manifest.get("part_slot", {})
+	for option in manifest.get("groups", {}).get(group, []):
+		if part_slot.has(option):
+			return String(part_slot[option])
+	return ""
+
+
+func _build_swatches(column: VBoxContainer, slot: String) -> void:
+	var palette := CitizenAppearance.slot_palette(slot)
+	if palette.is_empty():
+		return
+	var flow := HBoxContainer.new()
+	flow.add_theme_constant_override("separation", 5)
+	column.add_child(flow)
+	var buttons: Array[Button] = []
+	for i in palette.size():
+		var swatch := Button.new()
+		swatch.custom_minimum_size = Vector2(34, 22)
+		var box := StyleBoxFlat.new()
+		box.bg_color = palette[i]
+		box.border_color = Color(0.35, 0.55, 0.7, 0.9)
+		box.set_border_width_all(2)
+		box.set_corner_radius_all(6)
+		swatch.add_theme_stylebox_override("normal", box)
+		swatch.add_theme_stylebox_override("hover", box)
+		swatch.add_theme_stylebox_override("pressed", box)
+		swatch.pressed.connect(_pick_colour.bind(slot, palette[i]))
+		flow.add_child(swatch)
+		buttons.append(swatch)
+	_swatch_rows[slot] = buttons
+
+
+func _cycle_part(group: String, step: int) -> void:
+	var options: Array = CitizenAppearance.manifest().get("groups", {}).get(group, [])
+	if options.is_empty():
+		return
+	var current := options.find(_draft_appearance.parts.get(group, options[0]))
+	if current < 0:
+		current = 0
+	_draft_appearance.parts[group] = options[(current + step + options.size()) % options.size()]
+	_apply_draft()
+
+
+func _pick_colour(slot: String, colour: Color) -> void:
+	_draft_appearance.colours[slot] = colour
+	_apply_draft()
+
+
+func _randomize_appearance() -> void:
+	_draft_appearance = CitizenAppearance.random_from_seed(randi())
+	_apply_draft()
+
+
+func _apply_draft() -> void:
+	if player.has_method("set_appearance"):
+		player.set_appearance(_draft_appearance)
+	_refresh_customizer_labels()
+
+
+func _refresh_customizer_labels() -> void:
+	for group in _part_labels:
+		var label: Label = _part_labels[group]
+		var chosen := String(_draft_appearance.parts.get(group, ""))
+		# "Top_Jacket" -> "Jacket", "Hair_None" -> "None"
+		label.text = chosen.get_slice("_", 1).capitalize() if chosen.contains("_") else chosen
+	for slot in _swatch_rows:
+		var palette := CitizenAppearance.slot_palette(slot)
+		var chosen: Color = _draft_appearance.colours.get(slot, Color.WHITE)
+		var buttons: Array = _swatch_rows[slot]
+		for i in buttons.size():
+			var box := (buttons[i] as Button).get_theme_stylebox("normal") as StyleBoxFlat
+			var selected: bool = i < palette.size() and palette[i].is_equal_approx(chosen)
+			box.border_color = (
+				Color(0.45, 0.86, 1.0, 1.0) if selected else Color(0.35, 0.55, 0.7, 0.9)
+			)
+			box.set_border_width_all(4 if selected else 2)
+
+
+func _open_citizen_customizer() -> void:
+	# The live preview is only honest if the player IS the citizen, so switch
+	# first. switch_character is a no-op when they already are.
+	if player.has_method("switch_character") and player.get_character_id() != "citizen":
+		player.switch_character("citizen")
+		_selected_preview_id = "citizen"
+	_appearance_on_open = CharacterRoster.get_appearance().duplicate(true)
+	_draft_appearance = CharacterRoster.get_appearance().duplicate(true)
+	_customizer_open = true
+	_picker_open = false
+	_picker_overlay.visible = false
+	_customizer_root.visible = true
+	if player.has_method("set_customize_view"):
+		player.set_customize_view(true)
+	_apply_draft()
+	# Kept short: the prompt renders centre-bottom and a longer string runs
+	# underneath the panel.
+	_set_prompt("Pick a look")
+
+
+func _close_citizen_customizer() -> void:
+	_customizer_open = false
+	_customizer_root.visible = false
+	if player.has_method("set_customize_view"):
+		player.set_customize_view(false)
+	_set_prompt("")
+	if _pause_menu != null:
+		_pause_menu.set_pause_blocked(false)
+	if player.has_method("set_controls_enabled"):
+		player.set_controls_enabled(true)
+
+
+func _save_appearance() -> void:
+	CharacterRoster.set_appearance(_draft_appearance)
+	_show_message("LOOK SAVED  //  %s" % _draft_appearance.describe(), 2.5)
+	_close_citizen_customizer()
+
+
+func _cancel_appearance() -> void:
+	_draft_appearance = _appearance_on_open
+	if player.has_method("set_appearance"):
+		player.set_appearance(_draft_appearance)
+	CharacterRoster.set_appearance(_appearance_on_open)
+	_close_citizen_customizer()
